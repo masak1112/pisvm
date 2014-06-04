@@ -1,4 +1,5 @@
-
+#ifndef SVM_KERNEL_INCLUDED
+#define SVM_KERNEL_INCLUDED
 #include <math.h>
 #include "svm.h"
 #include "util.h"
@@ -116,3 +117,4 @@ private:
     return tanh(gamma*dot(i,j)+coef0);
   }
 };
+#endif

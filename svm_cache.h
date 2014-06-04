@@ -1,3 +1,5 @@
+#ifndef SVM_CACHE_INCLUDED
+#define SVM_CACHE_INCLUDED
 //
 // Kernel Cache
 //
@@ -34,3 +36,4 @@ private:
   void lru_delete(head_t *h);
   void lru_insert(head_t *h);
 };
+#endif

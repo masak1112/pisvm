@@ -1,6 +1,9 @@
 #ifndef _LIBSVM_H
 #define _LIBSVM_H
 
+#define TAU 1e-12
+#define INF HUGE_VAL
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -12,6 +15,9 @@ extern "C" {
     int index;
     double value;
   };
+
+	void info(const char *fmt,...);
+	void info_flush();
 
 /*   struct svm_problem */
 /*   { */

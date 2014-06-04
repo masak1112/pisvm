@@ -22,17 +22,22 @@ LIBS = $(PLAPACK_LIB) $(BLASLIB) -lm
 all: pisvm-train pisvm-predict pisvm-scale
 # test_parallel_loqo test_manteuffel
 
-pisvm-predict: pisvm-predict.cpp svm.o svm_cache.o
-	$(CXXC) $(CFLAGS) pisvm-predict.cpp svm.o svm_cache.o svm_kernel.o -o pisvm-predict $(LIBS)
-pisvm-train: pisvm-train.cpp svm.o svm_cache.o svm_kernel.o
-	$(CXXC) $(CFLAGS) pisvm-train.cpp svm.o svm_cache.o svm_kernel.o -o pisvm-train $(LIBS)
+pisvm-predict: pisvm-predict.cpp svm.o svm_cache.o svm_kernel.o svm_solver.o svm_solver_nu.o
+	$(CXXC) $(CFLAGS) pisvm-predict.cpp svm.o svm_cache.o svm_kernel.o svm_solver.o svm_solver_nu.o -o pisvm-predict $(LIBS)
+pisvm-train: pisvm-train.cpp svm.o svm_cache.o svm_kernel.o svm_solver.o svm_solver_nu.o
+	$(CXXC) $(CFLAGS) pisvm-train.cpp svm.o svm_cache.o svm_kernel.o svm_solver.o svm_solver_nu.o -o pisvm-train $(LIBS)
 pisvm-scale: pisvm-scale.cpp
 	$(CXXC) $(CFLAGS) pisvm-scale.cpp -o pisvm-scale
-svm.o: svm.cpp svm.h svm_cache.h svm_kernel.h
+svm.o: svm.cpp svm.h svm_cache.h svm_kernel.h svm_solver.h svm_solver_nu.h
 	$(CXXC) $(CFLAGS) $(INCLUDE) -D $(SOLVER) -c svm.cpp
 svm_cache.o: svm_cache.cpp svm_cache.h
 	$(CXXC) $(CFLAGS) -c svm_cache.cpp
 svm_kernel.o: svm_kernel.cpp svm_kernel.h
 	$(CXXC) $(CFLAGS) -c svm_kernel.cpp
+svm_solver.o: svm_solver.cpp svm_solver.h
+	$(CXXC) $(CFLAGS) -c svm_solver.cpp
+svm_solver_nu.o: svm_solver_nu.cpp svm_solver_nu.h svm_solver.h
+	$(CXXC) $(CFLAGS) -c svm_solver_nu.cpp
+
 clean:
 	rm -f *~ *.o pisvm-train pisvm-predict pisvm-scale
