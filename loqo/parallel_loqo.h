@@ -8,7 +8,7 @@
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation; either version 2 of the License, or
 // (at your option) any later version.
-// 
+//
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -41,7 +41,7 @@
 #define DUAL_UNBOUNDED              9
 #define TIME_LIMIT                  10
 
-/* 
+/*
  * Solves the quadratic programming problem
  *
  * minimize   c' * x + 1/2 x' * H * x
@@ -64,14 +64,14 @@ typedef double LOQOfloat;
 extern "C" {
 #endif
 
-  int parallel_loqo(PLA_Obj c, PLA_Obj h_x, PLA_Obj a, PLA_Obj b, PLA_Obj l,
-		    PLA_Obj u, PLA_Obj *x, PLA_Obj *g, PLA_Obj *t, PLA_Obj *y,
-		    PLA_Obj *z, PLA_Obj *s, PLA_Obj *dist, int verb, 
-		    LOQOfloat sigfig_max, int counter_max, LOQOfloat margin, 
-		    LOQOfloat bound, int restart);
+int parallel_loqo(PLA_Obj c, PLA_Obj h_x, PLA_Obj a, PLA_Obj b, PLA_Obj l,
+                  PLA_Obj u, PLA_Obj *x, PLA_Obj *g, PLA_Obj *t, PLA_Obj *y,
+                  PLA_Obj *z, PLA_Obj *s, PLA_Obj *dist, int verb,
+                  LOQOfloat sigfig_max, int counter_max, LOQOfloat margin,
+                  LOQOfloat bound, int restart);
 
-  int PLA_Choldc(PLA_Obj a);
-  void print_matrix(PLA_Obj A);
+int PLA_Choldc(PLA_Obj a);
+void print_matrix(PLA_Obj A);
 
 #ifdef __cplusplus
 }

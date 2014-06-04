@@ -25,58 +25,64 @@
 //
 class Solver {
 public:
-  Solver() {};
-  virtual ~Solver() {};
+    Solver() {};
+    virtual ~Solver() {};
 
-  struct SolutionInfo {
-    double obj;
-    double rho;
-    double upper_bound_p;
-    double upper_bound_n;
-    double r;	// for Solver_NU
-  };
+    struct SolutionInfo {
+        double obj;
+        double rho;
+        double upper_bound_p;
+        double upper_bound_n;
+        double r;	// for Solver_NU
+    };
 
-  void Solve(int l, const QMatrix& Q, const double *b_, const schar *y_,
-	     double *alpha_, double Cp, double Cn, double eps,
-	     SolutionInfo* si, int shrinking);
+    void Solve(int l, const QMatrix& Q, const double *b_, const schar *y_,
+               double *alpha_, double Cp, double Cn, double eps,
+               SolutionInfo* si, int shrinking);
 protected:
-  int active_size;
-  schar *y;
-  double *G;		// gradient of objective function
-  enum { LOWER_BOUND, UPPER_BOUND, FREE };
-  char *alpha_status;	// LOWER_BOUND, UPPER_BOUND, FREE
-  double *alpha;
-  const QMatrix *Q;
-  const Qfloat *QD;
-  double eps;
-  double Cp,Cn;
-  double *b;
-  int *active_set;
-  double *G_bar;		// gradient, if we treat free variables as 0
-  int l;
-  bool unshrinked;	// XXX
+    int active_size;
+    schar *y;
+    double *G;		// gradient of objective function
+    enum { LOWER_BOUND, UPPER_BOUND, FREE };
+    char *alpha_status;	// LOWER_BOUND, UPPER_BOUND, FREE
+    double *alpha;
+    const QMatrix *Q;
+    const Qfloat *QD;
+    double eps;
+    double Cp,Cn;
+    double *b;
+    int *active_set;
+    double *G_bar;		// gradient, if we treat free variables as 0
+    int l;
+    bool unshrinked;	// XXX
 
-  inline double get_C(int i)
-  {
-    return (y[i] > 0)? Cp : Cn;
-  }
-  inline void update_alpha_status(int i)
-  {
-    if(alpha[i] >= get_C(i))
-      alpha_status[i] = UPPER_BOUND;
-    else if(alpha[i] <= 0)
-      alpha_status[i] = LOWER_BOUND;
-    else alpha_status[i] = FREE;
-  }
-  bool is_upper_bound(int i) { return alpha_status[i] == UPPER_BOUND; }
-  bool is_lower_bound(int i) { return alpha_status[i] == LOWER_BOUND; }
-  bool is_free(int i) { return alpha_status[i] == FREE; }
-  void swap_index(int i, int j);
-  void reconstruct_gradient();
-  virtual int select_working_set(int &i, int &j);
-  virtual int max_violating_pair(int &i, int &j);
-  virtual double calculate_rho();
-  virtual void do_shrinking();
+    inline double get_C(int i)
+    {
+        return (y[i] > 0)? Cp : Cn;
+    }
+    inline void update_alpha_status(int i)
+    {
+        if(alpha[i] >= get_C(i))
+            alpha_status[i] = UPPER_BOUND;
+        else if(alpha[i] <= 0)
+            alpha_status[i] = LOWER_BOUND;
+        else alpha_status[i] = FREE;
+    }
+    bool is_upper_bound(int i) {
+        return alpha_status[i] == UPPER_BOUND;
+    }
+    bool is_lower_bound(int i) {
+        return alpha_status[i] == LOWER_BOUND;
+    }
+    bool is_free(int i) {
+        return alpha_status[i] == FREE;
+    }
+    void swap_index(int i, int j);
+    void reconstruct_gradient();
+    virtual int select_working_set(int &i, int &j);
+    virtual int max_violating_pair(int &i, int &j);
+    virtual double calculate_rho();
+    virtual void do_shrinking();
 };
 #endif
 

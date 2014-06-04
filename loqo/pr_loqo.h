@@ -7,7 +7,7 @@
  * Created:     10/14/97
  * Updated:     11/08/97
  *
- * 
+ *
  * Copyright (c) 1997  GMD Berlin - All rights reserved
  * THIS IS UNPUBLISHED PROPRIETARY SOURCE CODE of GMD Berlin
  * The copyright notice above does not evidence any
@@ -36,7 +36,7 @@
 #define DUAL_UNBOUNDED              9
 #define TIME_LIMIT                  10
 
-/* 
+/*
  * solve the quadratic programming problem
  *
  * minimize   c' * x + 1/2 x' * H * x
@@ -80,15 +80,15 @@ extern "C" {
 #endif
 
 int pr_loqo(int n, int m, double c[], double h_x[], double a[], double b[],
-	    double l[], double u[], double primal[], double dual[], 
-	    double dist[], int verb, double sigfig_max, int counter_max, 
-	    double margin, double bound, int restart);
+            double l[], double u[], double primal[], double dual[],
+            double dist[], int verb, double sigfig_max, int counter_max,
+            double margin, double bound, int restart);
 
 #ifdef __cplusplus
 }
 #endif
 
-/* 
+/*
  * compile with
  cc -O4 -c pr_loqo.c
  cc -xO4 -fast -xarch=v8plus -xchip=ultra -xparallel -c pr_loqo.c
