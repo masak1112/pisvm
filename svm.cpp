@@ -13,7 +13,6 @@
 #include <string.h>
 #include <mpi.h>
 #include "svm.h"
-#include "svm_cache.h"
 
 #define INF HUGE_VAL
 #define TAU 1e-12
@@ -51,7 +50,141 @@ void info(char *fmt,...) {}
 void info_flush() {}
 #endif
 
+//
+// Kernel Cache
+//
+// l is the number of total data items
+// size is the cache size limit in bytes
+//
+class Cache
+{
+public:
+  Cache(int l,int size);
+  ~Cache();
 
+  // request data [0,len)
+  // return some position p where [p,len) need to be filled
+  // (p >= len if nothing needs to be filled)
+  int get_data(const int index, Qfloat **data, int len);
+  void swap_index(int i, int j);	// future_option
+  // check if row is in cache
+  bool is_cached(const int index) const;
+private:
+  int l;
+  int size;
+  struct head_t
+  {
+    head_t *prev, *next;	// a cicular list
+    Qfloat *data;
+    int len;		// data[0,len) is cached in this entry
+  };
+
+  head_t *head;
+  head_t lru_head;
+  void lru_delete(head_t *h);
+  void lru_insert(head_t *h);
+};
+
+Cache::Cache(int l_,int size_):l(l_),size(size_)
+{
+  head = (head_t *)calloc(l,sizeof(head_t));	// initialized to 0
+  size /= sizeof(Qfloat);
+  size -= l * sizeof(head_t) / sizeof(Qfloat);
+  size = max(size, 2*l);	// cache must be large enough for two columns
+  lru_head.next = lru_head.prev = &lru_head;
+}
+
+Cache::~Cache()
+{
+  for(head_t *h = lru_head.next; h != &lru_head; h=h->next)
+    free(h->data);
+  free(head);
+}
+
+void Cache::lru_delete(head_t *h)
+{
+  // delete from current location
+  h->prev->next = h->next;
+  h->next->prev = h->prev;
+}
+
+void Cache::lru_insert(head_t *h)
+{
+  // insert to last position
+  h->next = &lru_head;
+  h->prev = lru_head.prev;
+  h->prev->next = h;
+  h->next->prev = h;
+}
+
+bool Cache::is_cached(const int index) const
+{
+  head_t *h = &head[index];
+  if(h->len > 0)
+    return true;
+  return false;
+}
+
+int Cache::get_data(const int index, Qfloat **data, int len)
+{
+  head_t *h = &head[index];
+  if(h->len) lru_delete(h);
+  int more = len - h->len;
+
+  if(more > 0)
+    {
+      // free old space
+      while(size < more)
+	{
+	  head_t *old = lru_head.next;
+	  lru_delete(old);
+	  free(old->data);
+	  size += old->len;
+	  old->data = 0;
+	  old->len = 0;
+	}
+
+      // allocate new space
+      h->data = (Qfloat *)realloc(h->data,sizeof(Qfloat)*len);
+      size -= more;
+      swap(h->len,len);
+    }
+
+  lru_insert(h);
+  *data = h->data;
+  return len;
+}
+
+void Cache::swap_index(int i, int j)
+{
+  if(i==j) return;
+
+  if(head[i].len) lru_delete(&head[i]);
+  if(head[j].len) lru_delete(&head[j]);
+  swap(head[i].data,head[j].data);
+  swap(head[i].len,head[j].len);
+  if(head[i].len) lru_insert(&head[i]);
+  if(head[j].len) lru_insert(&head[j]);
+
+  if(i>j) swap(i,j);
+  for(head_t *h = lru_head.next; h!=&lru_head; h=h->next)
+    {
+      if(h->len > i)
+	{
+	  if(h->len > j)
+	    swap(h->data[i],h->data[j]);
+	  else
+	    {
+	      // give up
+	      lru_delete(h);
+	      free(h->data);
+	      size += h->len;
+	      h->data = 0;
+	      h->len = 0;
+	    }
+	}
+    }
+}
 
 //
 // Kernel evaluation
