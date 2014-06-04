@@ -14,12 +14,22 @@
 #include <mpi.h>
 #include "svm.h"
 #include "svm_cache.h"
-#include "svm_kernel.h"
 
 #define INF HUGE_VAL
 #define TAU 1e-12
 #define Malloc(type,n) (type *)malloc((n)*sizeof(type))
 
+inline double powi(double base, int times)
+{
+  double tmp = base, ret = 1.0;
+  for(int t=times; t>0; t/=2)
+    {
+      if(t%2==1)
+	ret *= tmp;
+      tmp = tmp * tmp;
+    }
+  return ret;
+}
 inline double clocks2sec(clock_t t)
 {
     return (double) t / CLOCKS_PER_SEC;
@@ -40,6 +50,207 @@ void info_flush()
 void info(char *fmt,...) {}
 void info_flush() {}
 #endif
+
+
+
+//
+// Kernel evaluation
+//
+// the static method k_function is for doing single kernel evaluation
+// the constructor of Kernel prepares to calculate the l*l kernel matrix
+// the member function get_Q is for getting one column from the Q Matrix
+//
+class QMatrix {
+public:
+  virtual Qfloat *get_Q(int column, int len) const = 0;
+  virtual Qfloat *get_QD() const = 0;
+  virtual Qfloat *get_Q_subset(int i, int *idxs, int n) const = 0;
+  virtual Qfloat get_non_cached(int i, int j) const = 0;
+  virtual bool is_cached(int i) const = 0;
+  virtual void swap_index(int i, int j) const = 0;
+  virtual ~QMatrix() {}
+};  
+
+class Kernel: public QMatrix {
+public:
+  Kernel(int l, Xfloat **x, int **nz_idx, 
+	 const int *x_len, const int max_idx, 
+	 const svm_parameter& param);
+  virtual ~Kernel();
+
+  static double k_function(const Xfloat *x, const int *nz_x, const int lx,
+			   Xfloat *y, int *nz_y, int ly, 
+			   const svm_parameter& param);
+  virtual Qfloat *get_Q(int column, int len) const = 0;
+  virtual Qfloat *get_QD() const = 0;
+  virtual Qfloat *get_Q_subset(int i, int *idxs, int n) const = 0;
+  virtual Qfloat get_non_cached(int i, int j) const = 0;
+  virtual bool is_cached(int i) const = 0;
+  virtual void swap_index(int i, int j) const	// no so const...
+  {
+    swap(x[i],x[j]);
+    swap(nz_idx[i], nz_idx[j]);
+    swap(x_len[i], x_len[j]);
+    if(unrolled == i)
+      unrolled = j;
+    else if(unrolled == j)
+      unrolled = i;
+    if(x_square) swap(x_square[i],x_square[j]);
+  }
+protected:
+
+  double (Kernel::*kernel_function)(int i, int j) const;
+
+private:
+  Xfloat **x;
+  int **nz_idx;
+  int *x_len;
+  double *x_square;
+  // dense unrolled sparse vector
+  mutable Xfloat *v; 
+  // index of currently unrolled vector
+  mutable int unrolled;
+  int max_idx;
+
+  // svm_parameter
+  const int kernel_type;
+  const int degree;
+  const double gamma;
+  const double coef0;
+
+  static double dot(const Xfloat *x, const int *nz_x, const int lx, 
+		    const Xfloat *y, const int *nz_y, const int ly);
+  double dot(const int i, const int j) const
+  {
+    register int k;
+    register double sum;
+    if(i != unrolled)
+      {
+	for(k=0; k<x_len[unrolled]; ++k)
+	  v[nz_idx[unrolled][k]] = 0;
+	unrolled = i;
+	for(k=0; k<x_len[i]; ++k)
+	  v[nz_idx[i][k]] = x[i][k];
+      }
+    sum = 0;
+    for(k=0; k<x_len[j]; ++k)
+      sum += v[nz_idx[j][k]] * x[j][k];
+    return sum;
+  }
+  double kernel_linear(int i, int j) const
+  {
+    return dot(i,j);
+  }
+  double kernel_poly(int i, int j) const
+  {
+    return powi(gamma*dot(i,j)+coef0,degree);
+  }
+  double kernel_rbf(int i, int j) const
+  {
+    return exp(-gamma*(x_square[i]+x_square[j]-2*dot(i,j)));
+  }
+  double kernel_sigmoid(int i, int j) const
+  {
+    return tanh(gamma*dot(i,j)+coef0);
+  }
+};
+
+Kernel::Kernel(int l, Xfloat **x_, int **nz_idx_, 
+	       const int *x_len_, const int max_idx_,
+	       const svm_parameter& param)
+  :kernel_type(param.kernel_type), degree(param.degree),
+   gamma(param.gamma), coef0(param.coef0)
+{
+  switch(kernel_type)
+    {
+    case LINEAR:
+      kernel_function = &Kernel::kernel_linear;
+      break;
+    case POLY:
+      kernel_function = &Kernel::kernel_poly;
+      break;
+    case RBF:
+      kernel_function = &Kernel::kernel_rbf;
+      break;
+    case SIGMOID:
+      kernel_function = &Kernel::kernel_sigmoid;
+      break;
+    }
+
+  clone(x,x_,l);
+  clone(nz_idx,nz_idx_,l);
+  clone(x_len,x_len_,l);
+  max_idx = max_idx_;
+  v = new Xfloat[max_idx];
+  unrolled = 0;
+  for(int k=0; k<x_len[unrolled]; ++k)
+    v[nz_idx[unrolled][k]] = x[unrolled][k];
+
+  if(kernel_type == RBF)
+    {
+      x_square = new double[l];
+      for(int i=0;i<l;i++)
+	x_square[i] = dot(i,i);
+    }
+  else
+    x_square = 0;
+}
+
+Kernel::~Kernel()
+{
+  delete[] x;
+  delete[] nz_idx;
+  delete[] x_len;
+  delete[] v;
+  delete[] x_square;
+}
+
+double Kernel::dot(const Xfloat *x, const int *nz_x, const int lx, 
+		   const Xfloat *y, const int *nz_y, const int ly)
+{
+  register double sum = 0;
+  register int i = 0; 
+  register int j = 0;
+  while(i < lx && j < ly)
+    {
+      if(nz_x[i] == nz_y[j])
+	{
+	  sum += x[i] * y[j];
+	  ++i; ++j;
+	}
+      else if(nz_x[i] > nz_y[j])
+	++j;
+      else if(nz_x[i] < nz_y[j])
+	++i;
+    }
+  return sum;
+}
+
+double Kernel::k_function(const Xfloat *x, const int *nz_x, const int lx,
+			  Xfloat *y, int *nz_y, int ly, 
+			  const svm_parameter& param)
+{
+  switch(param.kernel_type)
+    {
+    case LINEAR:
+      return dot(x, nz_x, lx, y, nz_y, ly);
+    case POLY:
+      return powi(param.gamma*dot(x, nz_x, lx, y, nz_y, ly)
+		  +param.coef0,param.degree);
+    case RBF:
+      {
+	return exp(-param.gamma*(
+				 dot(x, nz_x, lx, x, nz_x, lx)+
+				 dot(y, nz_y, ly, y, nz_y, ly)-
+				 2*dot(x, nz_x, lx, y, nz_y, ly)));
+      }
+    case SIGMOID:
+      return tanh(param.gamma*dot(x, nz_x, lx, y, nz_y, ly)
+		  +param.coef0);
+    default:
+      return 0;	/* Unreachable */
+    }
+}
 
 // Generalized SMO+SVMlight algorithm
 // Solves:
