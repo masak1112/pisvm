@@ -745,6 +745,7 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
         }
         delete[] idx_not_lower;
         // Get contributions from other processors
+        // TODO Allreduce?
         for(int k=0; k<size; ++k)
         {
             if(rank == k)
@@ -1083,6 +1084,7 @@ void Solver_Parallel_SMO::determine_cached(int *work_set)
             p_cache_status[rank*l + i] = NOT_CACHED;
     }
     // Synchronize parallel cache status
+    //TODO Use MPI-AllGather/AlltoAll?
     for(int k=0; k<size; ++k)
     {
         ierr = MPI_Bcast(&p_cache_status[k*l], l, MPI_CHAR, k, comm);
@@ -1184,6 +1186,7 @@ void Solver_Parallel_SMO::sync_gradient(int *work_set, int *not_work_set)
     }
 
     // Synchronize G_n
+    //TODO Can i use Allreduce or something like that?
     for(int i=0; i<size; ++i)
     {
         if(rank == i)
