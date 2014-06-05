@@ -131,10 +131,10 @@ int Solver_Parallel_SMO_NU::select_working_set(int *work_set,
     double Gmin2 = INF;
     double Gmax1 = -INF;
     double Gmax2 = -INF;
-    int min1 = -1;
-    int min2 = -1;
-    int max1 = -1;
-    int max2 = -1;
+//    int min1 = -1;
+//    int min2 = -1;
+//    int max1 = -1;
+//    int max2 = -1;
     for(int t=0; t<l; ++t)
     {
         if(y[t] == +1)
@@ -144,7 +144,7 @@ int Solver_Parallel_SMO_NU::select_working_set(int *work_set,
                 if(G[t] < Gmin1)
                 {
                     Gmin1 = G[t];
-                    min1 = t;
+//                    min1 = t;
                 }
             }
             if(!is_lower_bound(t))
@@ -152,7 +152,7 @@ int Solver_Parallel_SMO_NU::select_working_set(int *work_set,
                 if(G[t] > Gmax1)
                 {
                     Gmax1 = G[t];
-                    max1 = t;
+//                    max1 = t;
                 }
             }
         }
@@ -163,7 +163,7 @@ int Solver_Parallel_SMO_NU::select_working_set(int *work_set,
                 if(G[t] < Gmin2)
                 {
                     Gmin2 = G[t];
-                    min2 = t;
+//                    min2 = t;
                 }
             }
             if(!is_lower_bound(t))
@@ -171,7 +171,7 @@ int Solver_Parallel_SMO_NU::select_working_set(int *work_set,
                 if(G[t] > Gmax2)
                 {
                     Gmax2 = G[t];
-                    max2 = t;
+//                    max2 = t;
                 }
             }
         }
