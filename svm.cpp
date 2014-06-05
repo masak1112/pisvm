@@ -1594,15 +1594,17 @@ svm_model *svm_load_model(const char *model_file_name)
     model->probB = NULL;
     model->label = NULL;
     model->nSV = NULL;
-
+    int scanRet;
+    //TODO Disable with switch to preserve speed?
+    #define CheckFscanf(n) if(n != scanRet){printf("fscanf Err line %d, file %s: %d != %d\n",__LINE__,__FILE__,(n),scanRet);}
     char cmd[81];
     while(1)
     {
-        fscanf(fp,"%80s",cmd);
+        scanRet = fscanf(fp,"%80s",cmd);CheckFscanf(1)
 
         if(strcmp(cmd,"svm_type")==0)
         {
-            fscanf(fp,"%80s",cmd);
+            scanRet = fscanf(fp,"%80s",cmd);CheckFscanf(1)
             int i;
             for(i=0; svm_type_table[i]; i++)
             {
@@ -1624,7 +1626,7 @@ svm_model *svm_load_model(const char *model_file_name)
         }
         else if(strcmp(cmd,"kernel_type")==0)
         {
-            fscanf(fp,"%80s",cmd);
+            scanRet = fscanf(fp,"%80s",cmd);CheckFscanf(1);
             int i;
             for(i=0; kernel_type_table[i]; i++)
             {
@@ -1644,50 +1646,65 @@ svm_model *svm_load_model(const char *model_file_name)
                 return NULL;
             }
         }
-        else if(strcmp(cmd,"degree")==0)
-            fscanf(fp,"%d",&param.degree);
-        else if(strcmp(cmd,"gamma")==0)
-            fscanf(fp,"%lf",&param.gamma);
-        else if(strcmp(cmd,"coef0")==0)
-            fscanf(fp,"%lf",&param.coef0);
-        else if(strcmp(cmd,"nr_class")==0)
-            fscanf(fp,"%d",&model->nr_class);
-        else if(strcmp(cmd,"total_sv")==0)
-            fscanf(fp,"%d",&model->l);
-        else if(strcmp(cmd,"rho")==0)
+        else if(strcmp(cmd,"degree")==0) {
+            scanRet = fscanf(fp,"%d",&param.degree);
+            CheckFscanf(1);
+        } else if(strcmp(cmd,"gamma")==0) {
+            scanRet = fscanf(fp,"%lf",&param.gamma);
+            CheckFscanf(1);
+        } else if(strcmp(cmd,"coef0")==0) {
+            scanRet = fscanf(fp,"%lf",&param.coef0);
+            CheckFscanf(1);
+        } else if(strcmp(cmd,"nr_class")==0) {
+            scanRet = fscanf(fp,"%d",&model->nr_class);
+            CheckFscanf(1);
+        } else if(strcmp(cmd,"total_sv")==0) {
+            scanRet = fscanf(fp,"%d",&model->l);
+            CheckFscanf(1);
+        } else if(strcmp(cmd,"rho")==0)
         {
             int n = model->nr_class * (model->nr_class-1)/2;
             model->rho = Malloc(double,n);
-            for(int i=0; i<n; i++)
-                fscanf(fp,"%lf",&model->rho[i]);
+            for(int i=0; i<n; i++) {
+                scanRet = fscanf(fp,"%lf",&model->rho[i]);
+                CheckFscanf(1);
+            }
         }
         else if(strcmp(cmd,"label")==0)
         {
             int n = model->nr_class;
             model->label = Malloc(int,n);
-            for(int i=0; i<n; i++)
-                fscanf(fp,"%d",&model->label[i]);
+            for(int i=0; i<n; i++) {
+                scanRet = fscanf(fp,"%d",&model->label[i]);
+                CheckFscanf(1);
+            }
         }
         else if(strcmp(cmd,"probA")==0)
         {
             int n = model->nr_class * (model->nr_class-1)/2;
             model->probA = Malloc(double,n);
-            for(int i=0; i<n; i++)
-                fscanf(fp,"%lf",&model->probA[i]);
+            for(int i=0; i<n; i++) {
+                scanRet = fscanf(fp,"%lf",&model->probA[i]);
+                CheckFscanf(1);
+            }
         }
         else if(strcmp(cmd,"probB")==0)
         {
             int n = model->nr_class * (model->nr_class-1)/2;
             model->probB = Malloc(double,n);
-            for(int i=0; i<n; i++)
-                fscanf(fp,"%lf",&model->probB[i]);
+            for(int i=0; i<n; i++) {
+                scanRet = fscanf(fp,"%lf",&model->probB[i]);
+                CheckFscanf(1);
+            }
         }
         else if(strcmp(cmd,"nr_sv")==0)
         {
             int n = model->nr_class;
             model->nSV = Malloc(int,n);
-            for(int i=0; i<n; i++)
-                fscanf(fp,"%d",&model->nSV[i]);
+            for(int i=0; i<n; i++) {
+                scanRet = fscanf(fp,"%d",&model->nSV[i]);
+                CheckFscanf(1);
+            }
         }
         else if(strcmp(cmd,"SV")==0)
         {
@@ -1708,7 +1725,7 @@ svm_model *svm_load_model(const char *model_file_name)
             return NULL;
         }
     }
-
+	
     // read sv_coef and SV
 
     int elements = 0;
@@ -1756,8 +1773,10 @@ out:
         model->SV[i] = &x_space[j];
         model->nz_sv[i] = &nz_x_space[j];
         model->sv_len[i] = 0;
-        for(int k=0; k<m; k++)
-            fscanf(fp,"%lf",&model->sv_coef[k][i]);
+        for(int k=0; k<m; k++) {
+            scanRet = fscanf(fp,"%lf",&model->sv_coef[k][i]);
+            CheckFscanf(1);
+        }
         while(1)
         {
             int c;
@@ -1767,7 +1786,8 @@ out:
             } while(isspace(c));
             ungetc(c,fp);
             //	  fscanf(fp,"%d:%lf",&nz_x_space[j],&x_space[j]);
-            fscanf(fp,"%d:%f",&nz_x_space[j],&x_space[j]);
+            scanRet = fscanf(fp,"%d:%f",&nz_x_space[j],&x_space[j]);
+            CheckFscanf(2);
             --nz_x_space[j]; // we need zero based indices
             ++model->sv_len[i];
             ++j;
@@ -1778,7 +1798,7 @@ out2:
             model->max_idx = nz_x_space[j-1]+1;
         }
     }
-
+    #undef CheckFscanf
     fclose(fp);
 
     model->free_sv = 1;	// XXX
