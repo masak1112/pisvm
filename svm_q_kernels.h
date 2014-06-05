@@ -18,14 +18,14 @@ public:
             QD[i]= (Qfloat)(this->*kernel_function)(i,i);
     }
 
-    Qfloat *get_Q(int i, int len) const
+    Qfloat *get_Q(int column, int len) const
     {
         Qfloat *data;
         int start;
-        if((start = cache->get_data(i,&data,len)) < len)
+        if((start = cache->get_data(column,&data,len)) < len)
         {
             for(int j=start; j<len; j++)
-                data[j] = (Qfloat)(y[i]*y[j]*(this->*kernel_function)(i,j));
+                data[j] = (Qfloat)(y[column]*y[j]*(this->*kernel_function)(column,j));
         }
         return data;
     }
@@ -98,14 +98,14 @@ public:
             QD[i]= (Qfloat)(this->*kernel_function)(i,i);
     }
 
-    Qfloat *get_Q(int i, int len) const
+    Qfloat *get_Q(int column, int len) const
     {
         Qfloat *data;
         int start;
-        if((start = cache->get_data(i,&data,len)) < len)
+        if((start = cache->get_data(column,&data,len)) < len)
         {
             for(int j=start; j<len; j++)
-                data[j] = (Qfloat)(this->*kernel_function)(i,j);
+                data[j] = (Qfloat)(this->*kernel_function)(column,j);
         }
         return data;
     }
@@ -192,20 +192,20 @@ public:
         swap(QD[i],QD[j]);
     }
 
-    Qfloat *get_Q(int i, int len) const
+    Qfloat *get_Q(int column, int len) const
     {
         Qfloat *data;
-        int real_i = index[i];
-        if(cache->get_data(real_i,&data,l) < l)
+        int real_column = index[column];
+        if(cache->get_data(real_column,&data,l) < l)
         {
             for(int j=0; j<l; j++)
-                data[j] = (Qfloat)(this->*kernel_function)(real_i,j);
+                data[j] = (Qfloat)(this->*kernel_function)(real_column,j);
         }
 
         // reorder and copy
         Qfloat *buf = buffer[next_buffer];
         next_buffer = 1 - next_buffer;
-        schar si = sign[i];
+        schar si = sign[column];
         for(int j=0; j<len; j++)
             buf[j] = si * sign[j] * data[index[j]];
         return buf;
