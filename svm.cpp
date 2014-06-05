@@ -1595,8 +1595,7 @@ svm_model *svm_load_model(const char *model_file_name)
     model->label = NULL;
     model->nSV = NULL;
     int scanRet;
-    //TODO Disable with switch to preserve speed?
-    #define CheckFscanf(n) if(n != scanRet){printf("fscanf Err line %d, file %s: %d != %d\n",__LINE__,__FILE__,(n),scanRet);}
+    #define CheckFscanf(n) if(n != scanRet){info("fscanf Err line %d, file %s: %d != %d\n",__LINE__,__FILE__,(n),scanRet);}
     char cmd[81];
     while(1)
     {
