@@ -878,7 +878,7 @@ void svm_group_classes(const svm_problem *prob, int *nr_class_ret,
             }
         }
         data_label[i] = j;
-        if(j == nr_class)
+        if(j == nr_class) // => this_label was not yet found in label[0<=j<nr_class] => new class found.
         {
             if(nr_class == max_nr_class)
             {
@@ -967,7 +967,7 @@ svm_model *svm_train(const svm_problem *prob, const svm_parameter *param)
 
         free(f.alpha);
     }
-    else
+    else // => param->svm_type == C_SVC || param->svm_type == NU_SVC
     {
         // classification
         int l = prob->l;
@@ -1724,7 +1724,7 @@ svm_model *svm_load_model(const char *model_file_name)
             return NULL;
         }
     }
-	
+
     // read sv_coef and SV
 
     int elements = 0;

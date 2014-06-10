@@ -103,7 +103,7 @@ void predict_parallel(FILE *input, FILE *output, int l, MPI_Comm comm)
 
         if (fscanf(input,"%lf",&target)==EOF)
             break;
-        while(1)
+        while(1) //TODO: skip lines in file this process is not responsible for (l_low_loc <= total < l_up_loc)
         {
             if(i>=max_nr_attr-1)	// need one more for index = -1
             {
@@ -184,6 +184,7 @@ out2:
             }
         for(j=1; j<size; ++j) {
             MPI_Status stat;
+            //TODO: MPI_Reduce?
             ierr = MPI_Recv(v, l_up[j]-l_low[j], MPI_DOUBLE,
                             j, 0, comm, &stat);
             ierr = MPI_Recv(&other_correct, 1, MPI_INT, j, 0, comm, &stat);
@@ -230,6 +231,7 @@ out2:
     } // if(rank == 0)
     else
     {
+        //TODO: MPI_Reduce?
         ierr = MPI_Send(v, local_l, MPI_DOUBLE, 0, 0, comm);
         ierr = MPI_Send(&correct, 1, MPI_INT, 0, 0, comm);
         ierr = MPI_Send(&sumv, 1, MPI_DOUBLE, 0, 0, comm);

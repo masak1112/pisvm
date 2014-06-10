@@ -293,6 +293,7 @@ out:
     prob.x = Malloc(Xfloat *, prob.l);
     prob.nz_idx = Malloc(int *, prob.l);
     prob.x_len = Malloc(int, prob.l);
+    //TODO: Check if not needed - loop sets prob.x_len[i] = 0 for i=0 to prob.l
     memset(prob.x_len, 0, sizeof(int)*prob.l);
     x_space = Malloc(Xfloat,elements);
     nz_idx_space = Malloc(int,elements);

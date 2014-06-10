@@ -176,6 +176,11 @@ int Solver_Parallel_SMO_NU::select_working_set(int *work_set,
             }
         }
     }
+    //Gmin1 is the smallest G[t] value for which y[t] == +1
+    //Gmax1 is the biggest G[t] value for which y[t] == +1
+    //Gmin2 is the smallest G[t] value for which y[t] != +1
+    //Gmax2 is the biggest G[t] value for which y[t] != +1
+    //All excluding boundaries.
     // check for optimality, max. violating pair.
     printf("max(Gmax1-Gmin1,Gmax2-Gmin2) = %g < %g\n",
            max(Gmax1-Gmin1,Gmax2-Gmin2),eps);
@@ -202,6 +207,7 @@ int Solver_Parallel_SMO_NU::select_working_set(int *work_set,
     int bot2=0;
     int count=0;
     // Select a full set initially
+    // TODO select_working_set(...) is only called if iter > 0 => nselect will always be q?
     int nselect = iter == 0 ? n : q;
     while(count < nselect)
     {
@@ -342,7 +348,7 @@ int Solver_Parallel_SMO_NU::select_working_set(int *work_set,
             work_set[i] = t;
             ++i;
             ++n;
-            ++work_count[t];
+            ++work_count[t]; //TODO update old_idx?
         }
         else
         {
@@ -458,6 +464,7 @@ int Solver_Parallel_SMO::select_working_set(int *work_set, int *not_work_set)
     int bot=0;
     int count=0;
     // Select a full set initially
+    // TODO select_working_set(...) is only called if iter > 0 => nselect will always be q?
     int nselect = iter == 0 ? n : q;
     while(top > bot && count < nselect)
     {
@@ -552,6 +559,7 @@ int Solver_Parallel_SMO::select_working_set(int *work_set, int *not_work_set)
             }
             else
             {
+                //TODO work_set appears to be sorted - use binary search?
                 for(int tt=0; tt<n_old; ++tt)
                 {
                     if(old_work_set[tt] == t)
@@ -712,6 +720,7 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
         G = new double[l];
         double *G_send = new double[l];
         double *G_recv = new double[l];
+        //TODO memcpy & memset or calloc
         for(int i=0; i<l; ++i)
         {
             G[i] = b[i];
@@ -836,6 +845,7 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
         this->n_low_loc = n_low[rank];
         this->n_up_loc = n_up[rank];
         setup_range(lmn_low, lmn_up, lmn);
+        //TODO: Only used in LOQO Solver?
         this->lmn_low_loc = lmn_low[rank];
         this->lmn_up_loc = lmn_up[rank];
 //       this->local_n = n_up_loc - n_low_loc;
@@ -862,7 +872,7 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
                     Q_bb[i*n+j] = Q_i[work_set[j]];
                 }
             }
-            else if(old_idx[i] == -1)
+            else if(old_idx[i] == -1) //TODO old_idx is only written for rank = 0 and not written for Parallel_Solver_NU?
             {
                 for(int j=0; j<=i; ++j)
                 {
@@ -870,7 +880,7 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
                     Q_bb[i*n+j] = Q.get_non_cached(work_set[i],work_set[j]);
                 }
             }
-            else
+            else // => old_idx[i] != -1 => we know an old index.
             {
                 for(int j=0; j<i; ++j)
                 {
@@ -886,6 +896,7 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
         ierr = MPI_Barrier(comm);
         CheckError(ierr);
         int num_elements = 0;
+        //TODO Allgather/Alltoall?
         for(int k=0; k<size; ++k)
         {
             ierr = MPI_Bcast(&Q_bb[num_elements], (n_up[k]-n_low[k])*n,
@@ -893,6 +904,7 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
             CheckError(ierr);
             num_elements += (n_up[k]-n_low[k])*n;
         }
+        //TODO: Do all processes need to create the full Q_bb?
         // Complete symmetric Q
         for(int i=0; i<n; ++i)
         {
@@ -904,7 +916,7 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
             for(int j=0; j<n; ++j)
             {
                 if(alpha[work_set[j]] > TOL_ZERO)
-                    c[i] -= Q_bb[i*n+j]*alpha[work_set[j]];
+                    c[i] -= Q_bb[i*n+j]*alpha[work_set[j]]; //TODO c is only used on rank == 0?
             }
             QD_b[i] = Q_bb[i*n+i];
         }
@@ -1000,9 +1012,9 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
         }
     } // while(1)
     // Calculate rho
-    si->rho = calculate_rho();
+    si->rho = calculate_rho(); //TODO: Only needed on rank == 0?
 
-    // Calculate objective value
+    // Calculate objective value //TODO: Only needed on rank == 0?
     {
         double v = 0;
         int i;
@@ -1172,6 +1184,7 @@ void Solver_Parallel_SMO::sync_gradient(int *work_set, int *not_work_set)
 {
     // Synchronize G_b
     double *G_buf = new double[l];
+    //TODO not needed copy?
     if(rank == 0)
     {
         for(int i=0; i<n; ++i)
