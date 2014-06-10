@@ -754,8 +754,7 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
         }
         delete[] idx_not_lower;
         // Get contributions from other processors
-        // TODO Allreduce?
-        for(int k=0; k<size; ++k)
+        /*for(int k=0; k<size; ++k)
         {
             if(rank == k)
             {
@@ -771,7 +770,8 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
                 for(int i=0; i<l; ++i)
                     G[i] += G_recv[i];
             }
-        }
+        }*/
+        MPI_Allreduce(G_send,G,l,MPIfloat,MPI_SUM,comm);
         delete[] G_recv;
         delete[] G_send;
         info("done.\n");
