@@ -861,6 +861,7 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
             a[i] = y[work_set[i]];
         }
         //      info("Setting up Q_bb..."); info_flush();
+        //TODO: work is very unbalanced because every process only calculates half the matrix.
         for(int i=n_low_loc; i<n_up_loc; ++i)
         {
 // 	  const Qfloat *Q_i = Q.get_Q_subset(work_set[i],work_set,n);
@@ -897,6 +898,8 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
         CheckError(ierr);
         int num_elements = 0;
         //TODO Allgather/Alltoall?
+        //Do not need to send the full row, because only j<i has been changed?
+        //Every Process sends his part of Q_bb to all other processes
         for(int k=0; k<size; ++k)
         {
             ierr = MPI_Bcast(&Q_bb[num_elements], (n_up[k]-n_low[k])*n,
