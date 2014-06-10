@@ -1203,7 +1203,7 @@ void Solver_Parallel_SMO::sync_gradient(int *work_set, int *not_work_set)
 
     // Synchronize G_n
     //TODO Can i use Allreduce or something like that?
-    for(int i=0; i<size; ++i)
+    /*for(int i=0; i<size; ++i)
     {
         if(rank == i)
         {
@@ -1215,6 +1215,9 @@ void Solver_Parallel_SMO::sync_gradient(int *work_set, int *not_work_set)
         // Accumulate contributions
         for(int j=0; j<lmn; ++j)
             G[not_work_set[j]] += G_buf[j];
-    }
+    }*/
+    MPI_Allreduce(G_n,G_buf,lmn,MPI_DOUBLE,MPI_SUM,comm);
+    for(int j=0; j<lmn; ++j)
+        G[not_work_set[j]] = G_buf[j];
     delete[] G_buf;
 }
