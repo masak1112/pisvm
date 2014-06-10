@@ -648,6 +648,7 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
     double problem_setup_time = 0;
     double inner_solver_time = 0;
     double gradient_updating_time = 0;
+    double working_set_time = 0;
     double time = 0;
 
     // Initialization
@@ -812,9 +813,9 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
         int status = 0;
         if(rank == 0)
         {
+            time = MPI_Wtime();
             if(iter > 0)
             {
-                time = MPI_Wtime();
                 // info("Starting working set selection\n"); info_flush();
                 status = select_working_set(work_set, not_work_set);
                 // info("select ws time = %.2f\n", MPI_Wtime() - time);
@@ -824,6 +825,7 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
                 // info("Starting init ws\n"); info_flush();
                 init_working_set(work_set, not_work_set);
             }
+            working_set_time += MPI_Wtime() - time;
         }
 
         // Send status to other processors.
