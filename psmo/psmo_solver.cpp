@@ -1218,6 +1218,6 @@ void Solver_Parallel_SMO::sync_gradient(int *work_set, int *not_work_set)
     }*/
     MPI_Allreduce(G_n,G_buf,lmn,MPI_DOUBLE,MPI_SUM,comm);
     for(int j=0; j<lmn; ++j)
-        G[not_work_set[j]] = G_buf[j];
+        G[not_work_set[j]] += G_buf[j];
     delete[] G_buf;
 }
