@@ -1100,11 +1100,13 @@ void Solver_Parallel_SMO::determine_cached(int *work_set)
     }
     // Synchronize parallel cache status
     //TODO Use MPI-AllGather/AlltoAll?
-    for(int k=0; k<size; ++k)
+    /*for(int k=0; k<size; ++k)
     {
         ierr = MPI_Bcast(&p_cache_status[k*l], l, MPI_CHAR, k, comm);
         CheckError(ierr);
-    }
+    }*/
+    //XXX: Check if sendbuf can point into recvbuf - if not we need to create a copy.
+    MPI_Allgather(&p_cache_status[rank*l],l,MPI_CHAR,p_cache_status,l,MPI_CHAR,comm);
 
     // Smart parallel cache handling
     int next_k = 0;
