@@ -45,36 +45,6 @@ template <class S, class T> inline void clone(T*& dst, S* src, int n)
 }
 
 template <class T>
-inline int partition(T a[], int idxs[], int p, int r)
-{
-    double x = a[r];
-    int i = p-1;
-    for(int j=p; j<r; ++j)
-    {
-        if(a[j] < x) {
-            ++i;
-            swap(a[i],a[j]);
-            swap(idxs[i],idxs[j]);
-        }
-    }
-    ++i;
-    swap(a[i],a[r]);
-    swap(idxs[i],idxs[r]);
-    return i;
-}
-
-template <class T>
-void quicksort(T a[], int idxs[], int l, int r)
-{
-    if(l < r)
-    {
-        int q = partition(a,idxs,l,r);
-        quicksort(a,idxs,l,q-1);
-        quicksort(a,idxs,q+1,r);
-    }
-}
-
-template <class T>
 void quick_sort(T a[], int idxs[], int l_, int r_)
 {
     int     i, j, s, d, l, iw, ps[20], pd[20];
