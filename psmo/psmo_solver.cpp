@@ -742,7 +742,7 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
                     idx_not_lower[count_not_lower]=i;
                     ++count_not_lower;
                 }
-                k = k == size-1 ? 0 : k+1;
+                k = (k + 1) % size;
             }
         }
         // Compute local portion of gradient
@@ -1128,7 +1128,7 @@ void Solver_Parallel_SMO::determine_cached(int *work_set)
                         ++count_cached;
                     }
                     found = true;
-                    next_k = k == size-1 ? 0 : k+1;
+                    next_k = (k + 1) % size;
                 }
             }
             for(int k=0; !found && k<next_k; ++k)
@@ -1141,7 +1141,7 @@ void Solver_Parallel_SMO::determine_cached(int *work_set)
                         ++count_cached;
                     }
                     found = true;
-                    next_k = k == size-1 ? 0 : k+1;
+                    next_k = (k + 1) % size;
                 }
             }
             if(!found) // not in any cache
@@ -1151,8 +1151,7 @@ void Solver_Parallel_SMO::determine_cached(int *work_set)
                     idx_not_cached[count_not_cached] = i;
                     ++count_not_cached;
                 }
-                next_not_cached = next_not_cached == size-1 ? 0 :
-                                  next_not_cached + 1;
+                next_not_cached = (next_not_cached + 1) % size;
             }
             found = false;
         } // if(nz[i])
