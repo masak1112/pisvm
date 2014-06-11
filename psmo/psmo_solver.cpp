@@ -1189,7 +1189,7 @@ void Solver_Parallel_SMO::setup_range(int *range_low, int *range_up,
 void Solver_Parallel_SMO::sync_gradient(int *work_set, int *not_work_set)
 {
     // Synchronize G_b
-    double *G_buf = new double[l];
+    double *G_buf = new double[max(n,lmn)];
     //TODO not needed copy?
     if(rank == 0)
     {
