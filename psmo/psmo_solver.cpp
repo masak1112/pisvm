@@ -487,7 +487,7 @@ int Solver_Parallel_SMO::select_working_set(int *work_set, int *not_work_set)
             ++bot;
         }
     }
-    if(count < n)
+    if(count < n) //This condition is always true if q + 2 < n, because count <= nselect + 1 and nselect is == q
     {
         // Compute subset of indices in previous working set
         // which were not yet selected
@@ -495,7 +495,7 @@ int Solver_Parallel_SMO::select_working_set(int *work_set, int *not_work_set)
         int *work_count_subset = new int[l-count];
         int *subset = new int[l-count];
         int *psubset = new int[l-count];
-        for(int i=0; i<l; ++i)
+        for(int i=0; i<l; ++i) //TODO can one optimize this by using old_work_set? old_work_set should contain all indices for which work_count[i] is > -1
         {
             if(work_status[i] == WORK_N && work_count[i] > -1)
             {

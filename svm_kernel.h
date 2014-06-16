@@ -84,7 +84,7 @@ private:
     static double dot(const Xfloat *x, const int *nz_x, const int lx,
                       const Xfloat *y, const int *nz_y, const int ly);
     double dot(const int i, const int j) const
-    {
+    {//TODO implement dot product without unrolling?
         register int k;
         register double sum;
         if(i != unrolled)
