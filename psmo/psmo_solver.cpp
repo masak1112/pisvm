@@ -720,11 +720,9 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
         info_flush();
         G = new double[l];
         double *G_send = new double[l];
-        double *G_recv = new double[l];
         //TODO memcpy & memset or calloc
         for(int i=0; i<l; ++i)
         {
-            G[i] = b[i];
             G_send[i] = 0;
         }
         // Determine even distribution of work w.r.t.
@@ -773,7 +771,10 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
             }
         }*/
         MPI_Allreduce(G_send,G,l,MPIfloat,MPI_SUM,comm);
-        delete[] G_recv;
+        for(int i=0; i<l; ++i)
+        {
+            G[i] += b[i];
+        }
         delete[] G_send;
         info("done.\n");
         info_flush();
