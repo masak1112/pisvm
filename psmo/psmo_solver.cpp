@@ -1055,6 +1055,9 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
         info("Gradient updating time = %.2lf (%.2lf%%)\n",
              gradient_updating_time,
              gradient_updating_time/total_time*100);
+        info("Working set time = %.2lf (%.2lf%%)\n",
+             working_set_time,
+             working_set_time/total_time*100);
         info_flush();
     }
     MPI_Barrier(comm);
