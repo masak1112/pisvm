@@ -8,6 +8,8 @@ CFLAGS = -Wall -O3
 #CFLAGS = -Wall -O3 -pg
 # Can be set to SOLVER_PSMO or SOLVER_LOQO
 SOLVER = SOLVER_PSMO
+# WARNING: This version is only tested with the SOLVER_PSMO, so i might have introduced changed that broke the LOQO solver!
+
 # If you set SOLVER = SOLVER_LOQO you need a properly
 # installed PLAPACK library and need to set the
 # following. PLAPACK has to be patched to support
@@ -28,7 +30,7 @@ pisvm-train: pisvm-train.cpp svm.o svm_cache.o svm_kernel.o svm_solver.o svm_sol
 	$(CXXC) $(CFLAGS) pisvm-train.cpp svm.o svm_cache.o svm_kernel.o svm_solver.o svm_solver_nu.o -o pisvm-train $(LIBS)
 pisvm-scale: pisvm-scale.cpp
 	$(CXXC) $(CFLAGS) pisvm-scale.cpp -o pisvm-scale
-svm.o: svm.cpp svm.h svm_cache.h svm_kernel.h svm_solver.h svm_solver_nu.h svm_q_kernels.h
+svm.o: svm.cpp svm.h svm_cache.h svm_kernel.h svm_solver.h svm_solver_nu.h svm_q_kernels.h psmo/psmo_solver.cpp psmo/psmo_solver.h
 	$(CXXC) $(CFLAGS) $(INCLUDE) -D $(SOLVER) -c svm.cpp
 svm_cache.o: svm_cache.cpp svm_cache.h
 	$(CXXC) $(CFLAGS) -c svm_cache.cpp
