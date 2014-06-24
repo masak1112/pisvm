@@ -21,6 +21,7 @@
 
 #define CheckError(n) if(n){printf("line %d, file %s\n",__LINE__,__FILE__);}
 #define MPIfloat MPI_DOUBLE
+#define Qmpitype MPI_FLOAT
 
 const double Solver_Parallel_SMO::TOL_ZERO = 1e-09; // tolerance for zero entries
 
@@ -865,7 +866,7 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
         }
         //      info("Setting up Q_bb..."); info_flush();
         //TODO: work is very unbalanced because every process only calculates half the matrix.
-        for(int i=n_low_loc; i<n_up_loc; ++i)
+        for(int i=rank; i<n; i+=size)
         {
 // 	  const Qfloat *Q_i = Q.get_Q_subset(work_set[i],work_set,n);
             if(Q.is_cached(work_set[i]))
@@ -897,19 +898,45 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
             }
         }
         // Synchronize Q_bb
-        ierr = MPI_Barrier(comm);
-        CheckError(ierr);
-        int num_elements = 0;
+        //ierr = MPI_Barrier(comm);
+        //CheckError(ierr);
+        //int num_elements = 0;
         //TODO Allgather/Alltoall?
         //Do not need to send the full row, because only j<i has been changed?
         //Every Process sends his part of Q_bb to all other processes
-        for(int k=0; k<size; ++k)
+        {
+            MPI_Datatype t,tr;
+            MPI_Type_vector(n/size,n,size*n,Qmpitype,&t);
+            MPI_Type_commit(&t);
+            MPI_Type_create_resized(t,0,n*sizeof(Qfloat),&tr);
+            MPI_Type_commit(&tr);
+
+            int *displ = new int[size];
+            int *cnt = new int[size];
+            for (int i = 0; i < size; ++i) {
+                displ[i] = i;
+                cnt[i] = 1;
+            }
+            MPI_Allgatherv(&Q_bb[n*rank], cnt[rank], t, Q_bb, cnt, displ, tr, comm);
+            if (n%size != 0) {
+                for (int i = 0; i < size; ++i) {
+                    displ[i] = i*n;
+                    cnt[i] = i < n%size ? n : 0;
+                }
+                MPI_Allgatherv(&Q_bb[n*(n-(n%size))+rank*n],cnt[rank],Qmpitype,&Q_bb[n*(n-(n%size))],cnt,displ,Qmpitype,comm);
+            }
+            MPI_Type_free(&tr);
+            MPI_Type_free(&t);
+            delete[] displ;
+            delete[] cnt;
+        }
+        /*for(int k=0; k<size; ++k)
         {
             ierr = MPI_Bcast(&Q_bb[num_elements], (n_up[k]-n_low[k])*n,
                              MPI_FLOAT, k, comm);
             CheckError(ierr);
             num_elements += (n_up[k]-n_low[k])*n;
-        }
+        }*/
         //TODO: Do all processes need to create the full Q_bb?
         // Complete symmetric Q
         for(int i=0; i<n; ++i)
