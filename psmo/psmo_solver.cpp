@@ -906,7 +906,13 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
         //Every Process sends his part of Q_bb to all other processes
         {
             MPI_Datatype t,tr;
-            MPI_Type_vector(n/size,n,size*n,Qmpitype,&t);
+            int *indexed_cnt = new int[n/size];
+            int *indexed_displ = new int[n/size];
+            for (int i = 0; i < n/size; i++) {
+                indexed_cnt[i] = (i+1) * size;
+                indexed_displ[i] = i*n*size;
+            }
+            MPI_Type_indexed(n/size,indexed_cnt,indexed_displ,Qmpitype,&t);
             MPI_Type_commit(&t);
             MPI_Type_create_resized(t,0,n*sizeof(Qfloat),&tr);
             MPI_Type_commit(&tr);
@@ -917,7 +923,7 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
                 displ[i] = i;
                 cnt[i] = 1;
             }
-            MPI_Allgatherv(&Q_bb[n*rank], cnt[rank], t, Q_bb, cnt, displ, tr, comm);
+            MPI_Allgatherv(&Q_bb[n*rank], 1, t, Q_bb, cnt, displ, tr, comm);
             if (n%size != 0) {
                 for (int i = 0; i < size; ++i) {
                     displ[i] = i*n;
@@ -927,6 +933,8 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
             }
             MPI_Type_free(&tr);
             MPI_Type_free(&t);
+            delete[] indexed_cnt;
+            delete[] indexed_displ;
             delete[] displ;
             delete[] cnt;
         }
