@@ -923,13 +923,13 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
                 displ[i] = i;
                 cnt[i] = 1;
             }
-            MPI_Allgatherv(&Q_bb[n*rank], 1, t, Q_bb, cnt, displ, tr, comm);
+            MPI_Allgatherv(MPI_IN_PLACE, 1, t, Q_bb, cnt, displ, tr, comm);
             if (n%size != 0) {
                 for (int i = 0; i < size; ++i) {
                     displ[i] = i*n;
                     cnt[i] = i < n%size ? n : 0;
                 }
-                MPI_Allgatherv(&Q_bb[n*(n-(n%size))+rank*n],cnt[rank],Qmpitype,&Q_bb[n*(n-(n%size))],cnt,displ,Qmpitype,comm);
+                MPI_Allgatherv(MPI_IN_PLACE,cnt[rank],Qmpitype,&Q_bb[n*(n-(n%size))],cnt,displ,Qmpitype,comm);
             }
             MPI_Type_free(&tr);
             MPI_Type_free(&t);
@@ -1147,7 +1147,7 @@ void Solver_Parallel_SMO::determine_cached(int *work_set)
         CheckError(ierr);
     }*/
     //XXX: Check if sendbuf can point into recvbuf - if not we need to create a copy.
-    MPI_Allgather(&p_cache_status[rank*l],l,MPI_CHAR,p_cache_status,l,MPI_CHAR,comm);
+    MPI_Allgather(MPI_IN_PLACE,l,MPI_CHAR,p_cache_status,l,MPI_CHAR,comm);
 
     // Smart parallel cache handling
     int next_k = 0;
