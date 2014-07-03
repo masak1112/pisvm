@@ -951,15 +951,26 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
         {
             for(int j=0; j<i; ++j)
                 Q_bb[j*n+i] = Q_bb[i*n+j];
+            QD_b[i] = Q_bb[i*n+i];
         }
-        for(int i=0; i<n; ++i)
+        for(int i=n_low_loc; i<n_up_loc; ++i)
         {
             for(int j=0; j<n; ++j)
             {
-                if(alpha[work_set[j]] > TOL_ZERO)
-                    c[i] -= Q_bb[i*n+j]*alpha[work_set[j]]; //TODO c is only used on rank == 0?
+                if(alpha_b[j] > TOL_ZERO)
+                    c[i] -= Q_bb[i*n+j]*alpha_b[j]; //TODO c is only used on rank == 0?
             }
-            QD_b[i] = Q_bb[i*n+i];
+        }
+        if (rank == 0) {
+            int* recvcnts = new int[size];
+            for (int i = 0; i < size;i++) {
+                recvcnts[i] = n_up[i] - n_low[i];
+            }
+            MPI_Gatherv(MPI_IN_PLACE,n_up_loc-n_low_loc,MPI_DOUBLE,c, recvcnts,n_low, MPI_DOUBLE, 0, comm);
+            delete[] recvcnts;
+        }
+        else {
+            MPI_Gatherv(&c[n_low_loc],n_up_loc-n_low_loc,MPI_DOUBLE, NULL, NULL, NULL, MPI_DOUBLE, 0, comm);
         }
         //info("done.\n"); info_flush();
         time = MPI_Wtime() - time;
