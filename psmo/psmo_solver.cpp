@@ -917,26 +917,24 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
             MPI_Type_create_resized(t,0,n*sizeof(Qfloat),&tr);
             MPI_Type_commit(&tr);
 
-            int *displ = new int[size];
-            int *cnt = new int[size];
-            for (int i = 0; i < size; ++i) {
-                displ[i] = i;
-                cnt[i] = 1;
-            }
-            MPI_Allgatherv(MPI_IN_PLACE, 1, t, Q_bb, cnt, displ, tr, comm);
+
+            MPI_Allgather(MPI_IN_PLACE, 1, t, Q_bb, 1, tr, comm);
             if (n%size != 0) {
+                int *displ = new int[size];
+                int *cnt = new int[size];
                 for (int i = 0; i < size; ++i) {
                     displ[i] = i*n;
                     cnt[i] = i < n%size ? n : 0;
                 }
                 MPI_Allgatherv(MPI_IN_PLACE,cnt[rank],Qmpitype,&Q_bb[n*(n-(n%size))],cnt,displ,Qmpitype,comm);
+                delete[] displ;
+                delete[] cnt;
             }
             MPI_Type_free(&tr);
             MPI_Type_free(&t);
             delete[] indexed_cnt;
             delete[] indexed_displ;
-            delete[] displ;
-            delete[] cnt;
+
         }
         /*for(int k=0; k<size; ++k)
         {
