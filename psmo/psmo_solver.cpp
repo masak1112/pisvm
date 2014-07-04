@@ -1144,7 +1144,6 @@ void Solver_Parallel_SMO::determine_cached(int *work_set)
         ierr = MPI_Bcast(&p_cache_status[k*l], l, MPI_CHAR, k, comm);
         CheckError(ierr);
     }*/
-    //XXX: Check if sendbuf can point into recvbuf - if not we need to create a copy.
     MPI_Allgather(MPI_IN_PLACE,l,MPI_CHAR,p_cache_status,l,MPI_CHAR,comm);
 
     // Smart parallel cache handling
