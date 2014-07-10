@@ -242,9 +242,9 @@ void parse_command_line(int argc, char **argv, char *input_file_name,
 
     strcpy(input_file_name, argv[i]);
 
-    if(i<argc-1)
+    if(i == argc - 2) //There is exactly 1 additional parameter after the input file name
         strcpy(model_file_name,argv[i+1]);
-    else
+    else if (i == argc - 1)//input file name is the last parameter
     {
         char *p = strrchr(argv[i],'/');
         if(p==NULL)
@@ -252,6 +252,9 @@ void parse_command_line(int argc, char **argv, char *input_file_name,
         else
             ++p;
         sprintf(model_file_name,"%s.model",p);
+    } else { //There are more parameters
+        printf("ERROR: There are unparsed parameters!\n");
+        exit_with_help();
     }
 }
 
