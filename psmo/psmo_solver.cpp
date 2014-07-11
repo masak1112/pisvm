@@ -867,7 +867,7 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
         //      info("Setting up Q_bb..."); info_flush();
         //Every Process gets some rows from the bottom and some from the top of the matrix
         const int upper_half = n-(n/(2*size))*size;
-        for(int i=(size + rank - (size - (n % size)))%size; i<upper_half; i+=size)
+        for(int i=(rank + n)%size; i<upper_half; i+=size)
         {
 // 	  const Qfloat *Q_i = Q.get_Q_subset(work_set[i],work_set,n);
             if(Q.is_cached(work_set[i]))
