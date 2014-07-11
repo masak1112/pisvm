@@ -21,6 +21,7 @@
 #define __PSMO__SOLVER__H__
 
 #include "util.h"
+#define Qmpitype MPI_FLOAT
 
 class Solver_Parallel_SMO : public Solver
 {
@@ -71,6 +72,97 @@ private:
     char *p_cache_status;
     int *idx_cached, *idx_not_cached, *nz;
     int count_cached, count_not_cached;
+    //MPI Types for transmitting Q_bb
+    void setup_Q_bb_mpitypes() {
+        const int upper_half = n-(n/(2*size))*size;
+        if(mpitypes_n == 0) {
+            gatherv_Qbb_unsplittable_displ = new int[size];
+            gatherv_Qbb_unsplittable_counts = new int[size];
+        }
+        if (n%size != 0) {
+            //First rows that are not distributed equally (rows 0 to n%size - NOT dividable by 'size')
+            //last processor did calculate row (n%size) - 1
+
+            const int unused = size-(n%size);
+            for (int i = 0;i < unused; ++i) {
+                gatherv_Qbb_unsplittable_displ[i] = 0;
+                gatherv_Qbb_unsplittable_counts[i] = 0;
+            }
+            for (int i = unused; i < size; ++i) {
+                gatherv_Qbb_unsplittable_displ[i] = (i - unused)*n;
+                gatherv_Qbb_unsplittable_counts[i] = i - unused + 1;
+            }
+        }
+
+
+        int *indexed_cnt;
+        int *indexed_displ;
+        {
+             //Upper half - rows (n%size) + 1 to upper_half (amount is dividable by 'size': floor(n/2p)*2p + (n%2p > p ? p : 0)
+            if (mpitypes_n != 0) {
+                MPI_Type_free(&mpitype_Qbb_upper_rows_resized);
+                MPI_Type_free(&mpitype_Qbb_upper_rows);
+            }
+            const int rowsPerProcess = n/(2*size) + (n%(2*size) >= size ? 1 : 0);
+            indexed_cnt = new int[rowsPerProcess];
+            indexed_displ = new int[rowsPerProcess];
+            for (int i = 0; i < rowsPerProcess; i++) {
+                indexed_cnt[i] = (n%size) + (i+1) * size;
+                indexed_displ[i] = i*n*size;
+            }
+            MPI_Type_indexed(rowsPerProcess,indexed_cnt,indexed_displ,Qmpitype,&mpitype_Qbb_upper_rows);
+            MPI_Type_commit(&mpitype_Qbb_upper_rows);
+            MPI_Type_create_resized(mpitype_Qbb_upper_rows,0,n*sizeof(Qfloat),&mpitype_Qbb_upper_rows_resized);
+            MPI_Type_commit(&mpitype_Qbb_upper_rows_resized);
+        }
+        if (mpitypes_n == 0) {
+            gatherv_Qbb_lower_counts = new int[size];
+            gatherv_Qbb_lower_displ = new int[size];
+        }
+        if (n/(2*size) >= 1) {
+            //There is a lower half
+            //rows upper_half to n (dividable by 'size')
+            if (mpitypes_n/(2*size) >= 1) {
+                //There are old types saved - free them
+                MPI_Type_free(&mpitype_Qbb_lower_rows_resized);
+                MPI_Type_free(&mpitype_Qbb_lower_rows);
+            }
+            //There is a lower half
+            //rows upper_half to n (dividable by 'size')
+            const int rowsPerProcess = n/(2*size);
+            for (int i = 0; i < rowsPerProcess; i++) {
+                indexed_cnt[i] = upper_half + (i+1) * size;
+                indexed_displ[i] = i*n*size;
+            }
+            MPI_Type_indexed(rowsPerProcess,indexed_cnt,indexed_displ,Qmpitype,&mpitype_Qbb_lower_rows);
+            MPI_Type_commit(&mpitype_Qbb_lower_rows);
+            MPI_Type_create_resized(mpitype_Qbb_lower_rows,0,n*sizeof(Qfloat),&mpitype_Qbb_lower_rows_resized);
+            MPI_Type_commit(&mpitype_Qbb_lower_rows_resized);
+
+            for (int i = 0; i < size; i++) {
+                gatherv_Qbb_lower_counts[i] = 1;
+                gatherv_Qbb_lower_displ[i] = (size - i - 1);
+            }
+        } else if (mpitypes_n/(2*size) >= 1) {
+            //We used them before, but don't need them anymore - free them.
+            MPI_Type_free(&mpitype_Qbb_lower_rows_resized);
+            MPI_Type_free(&mpitype_Qbb_lower_rows);
+        }
+
+        delete[] indexed_cnt;
+        delete[] indexed_displ;
+
+        mpitypes_n = n;
+    }
+    int mpitypes_n;
+    MPI_Datatype mpitype_Qbb_upper_rows;
+    MPI_Datatype mpitype_Qbb_upper_rows_resized;
+    MPI_Datatype mpitype_Qbb_lower_rows;
+    MPI_Datatype mpitype_Qbb_lower_rows_resized;
+    int *gatherv_Qbb_unsplittable_counts;
+    int *gatherv_Qbb_unsplittable_displ;
+    int *gatherv_Qbb_lower_counts;
+    int *gatherv_Qbb_lower_displ;
 };
 
 class Solver_Parallel_SMO_NU : public Solver_Parallel_SMO

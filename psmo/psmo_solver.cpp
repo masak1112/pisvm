@@ -21,7 +21,6 @@
 
 #define CheckError(n) if(n){printf("line %d, file %s\n",__LINE__,__FILE__);}
 #define MPIfloat MPI_DOUBLE
-#define Qmpitype MPI_FLOAT
 
 const double Solver_Parallel_SMO::TOL_ZERO = 1e-09; // tolerance for zero entries
 
@@ -34,6 +33,7 @@ Solver_Parallel_SMO::Solver_Parallel_SMO(int n, int q, MPI_Comm comm)
     // Ensure sane q
     this->q = this->q > this->n ? this->n : this->q;
     this->comm = comm;
+    mpitypes_n = 0;
     ierr = MPI_Comm_rank(comm, &this->rank);
     CheckError(ierr);
     ierr = MPI_Comm_size(comm, &this->size);
@@ -934,73 +934,13 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
         //Do not need to send the full row, because only j<i has been changed?
         //Every Process sends his part of Q_bb to all other processes
         {
+            if (mpitypes_n != n) setup_Q_bb_mpitypes();
             if (n%size != 0) {
-                //First rows that are not distributed equally (rows 0 to n%size - NOT dividable by 'size')
-                //last processor did calculate row (n%size) - 1
-                int *displ = new int[size];
-                int *cnt = new int[size];
-                const int unused = size-(n%size);
-                for (int i = 0;i < unused; ++i) {
-                    displ[i] = 0;
-                    cnt[i] = 0;
-                }
-                for (int i = unused; i < size; ++i) {
-                    displ[i] = (i - unused)*n;
-                    cnt[i] = i - unused + 1;
-                }
-                MPI_Allgatherv(MPI_IN_PLACE,cnt[rank],Qmpitype,Q_bb,cnt,displ,Qmpitype,comm);
-                delete[] displ;
-                delete[] cnt;
+                MPI_Allgatherv(MPI_IN_PLACE,gatherv_Qbb_unsplittable_counts[rank],Qmpitype,Q_bb,gatherv_Qbb_unsplittable_counts,gatherv_Qbb_unsplittable_displ,Qmpitype,comm);
             }
-            //Upper half - rows (n%size) + 1 to upper_half (amount is dividable by 'size': floor(n/2p)*2p + (n%2p > p ? p : 0)
-            {
-                const int rowsPerProcess = n/(2*size) + (n%(2*size) >= size ? 1 : 0);
-                MPI_Datatype t,tr;
-                int *indexed_cnt = new int[rowsPerProcess];
-                int *indexed_displ = new int[rowsPerProcess];
-                for (int i = 0; i < rowsPerProcess; i++) {
-                    indexed_cnt[i] = (n%size) + (i+1) * size;
-                    indexed_displ[i] = i*n*size;
-                }
-                MPI_Type_indexed(rowsPerProcess,indexed_cnt,indexed_displ,Qmpitype,&t);
-                MPI_Type_commit(&t);
-                MPI_Type_create_resized(t,0,n*sizeof(Qfloat),&tr);
-                MPI_Type_commit(&tr);
-                MPI_Allgather(MPI_IN_PLACE, 1, t, Q_bb + (n%size)*n, 1, tr, comm);
-                MPI_Type_free(&tr);
-                MPI_Type_free(&t);
-                delete[] indexed_cnt;
-                delete[] indexed_displ;
-            }
+            MPI_Allgather(MPI_IN_PLACE, 1, mpitype_Qbb_upper_rows, Q_bb + (n%size)*n, 1, mpitype_Qbb_upper_rows_resized, comm);
             if (n/(2*size) >= 1) {
-
-                //There is a lower half
-                //rows upper_half to n (dividable by 'size')
-                const int rowsPerProcess = n/(2*size);
-                MPI_Datatype t,tr;
-                int *indexed_cnt = new int[rowsPerProcess];
-                int *indexed_displ = new int[rowsPerProcess];
-                for (int i = 0; i < rowsPerProcess; i++) {
-                    indexed_cnt[i] = upper_half + (i+1) * size;
-                    indexed_displ[i] = i*n*size;
-                }
-                MPI_Type_indexed(rowsPerProcess,indexed_cnt,indexed_displ,Qmpitype,&t);
-                MPI_Type_commit(&t);
-                MPI_Type_create_resized(t,0,n*sizeof(Qfloat),&tr);
-                MPI_Type_commit(&tr);
-                int *cnts = new int[size];
-                int *displ = new int[size];
-                for (int i = 0; i < size; i++) {
-                    cnts[i] = 1;
-                    displ[i] = (size - i - 1);
-                }
-                MPI_Allgatherv(MPI_IN_PLACE, 1, t, Q_bb + upper_half*n, cnts, displ, tr, comm);
-                MPI_Type_free(&tr);
-                MPI_Type_free(&t);
-                delete[] indexed_cnt;
-                delete[] indexed_displ;
-                delete[] cnts;
-                delete[] displ;
+                MPI_Allgatherv(MPI_IN_PLACE, 1, mpitype_Qbb_lower_rows, Q_bb + upper_half*n, gatherv_Qbb_lower_counts, gatherv_Qbb_lower_displ, mpitype_Qbb_lower_rows_resized, comm);
             }
         }
 
@@ -1185,6 +1125,19 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
     delete[] idx_cached;
     delete[] idx_not_cached;
     delete[] nz;
+    if (mpitypes_n/(2*size) >= 1) {
+        MPI_Type_free(&mpitype_Qbb_lower_rows_resized);
+        MPI_Type_free(&mpitype_Qbb_lower_rows);
+    }
+    if (mpitypes_n != 0) {
+        MPI_Type_free(&mpitype_Qbb_upper_rows_resized);
+        MPI_Type_free(&mpitype_Qbb_upper_rows);
+    }
+    mpitypes_n = 0;
+    delete[] gatherv_Qbb_lower_counts;
+    delete[] gatherv_Qbb_lower_displ;
+    delete[] gatherv_Qbb_unsplittable_counts;
+    delete[] gatherv_Qbb_unsplittable_displ;
 }
 
 void Solver_Parallel_SMO::determine_cached(int *work_set)
