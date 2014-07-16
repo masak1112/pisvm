@@ -939,7 +939,7 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
                 MPI_Allgatherv(MPI_IN_PLACE,gatherv_Qbb_unsplittable_counts[rank],Qmpitype,Q_bb,gatherv_Qbb_unsplittable_counts,gatherv_Qbb_unsplittable_displ,Qmpitype,comm);
             }
             MPI_Allgather(MPI_IN_PLACE, 1, mpitype_Qbb_upper_rows, Q_bb + (n%size)*n, 1, mpitype_Qbb_upper_rows_resized, comm);
-            if (n/(2*size) >= 1) {
+            if (n >= 2 * size) {
                 MPI_Allgatherv(MPI_IN_PLACE, 1, mpitype_Qbb_lower_rows, Q_bb + upper_half*n, gatherv_Qbb_lower_counts, gatherv_Qbb_lower_displ, mpitype_Qbb_lower_rows_resized, comm);
             }
         }

@@ -119,10 +119,10 @@ private:
             gatherv_Qbb_lower_counts = new int[size];
             gatherv_Qbb_lower_displ = new int[size];
         }
-        if (n/(2*size) >= 1) {
+        if (n >= 2 * size) {
             //There is a lower half
             //rows upper_half to n (dividable by 'size')
-            if (mpitypes_n/(2*size) >= 1) {
+            if (mpitypes_n >= 2 * size) {
                 //There are old types saved - free them
                 MPI_Type_free(&mpitype_Qbb_lower_rows_resized);
                 MPI_Type_free(&mpitype_Qbb_lower_rows);
@@ -143,7 +143,7 @@ private:
                 gatherv_Qbb_lower_counts[i] = 1;
                 gatherv_Qbb_lower_displ[i] = (size - i - 1);
             }
-        } else if (mpitypes_n/(2*size) >= 1) {
+        } else if (mpitypes_n >= 2 * size) {
             //We used them before, but don't need them anymore - free them.
             MPI_Type_free(&mpitype_Qbb_lower_rows_resized);
             MPI_Type_free(&mpitype_Qbb_lower_rows);
