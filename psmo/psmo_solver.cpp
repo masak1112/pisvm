@@ -866,6 +866,8 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
 // 	  const Qfloat *Q_i = Q.get_Q_subset(work_set[i],work_set,n);
             if(Q.is_cached(work_set[i]))
             {
+                //Q is_cached does not mean we can access the whole subset for free: it might happen, that only
+                // the not_work_subset is cached and all values have to be calculated!
                 const Qfloat *Q_i = Q.get_Q_subset(work_set[i],work_set,n);
                 for(int j=0; j<=i; ++j)
                 {
@@ -978,6 +980,7 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
         // First update the cached part...
         for(int i=0; i<count_cached; ++i)
         {
+            //Even if Q_i 'is_cached' does not mean the not_work_subset is cached. it might be the case, that only work_set is cached.
             const Qfloat *Q_i = Q.get_Q_subset(work_set[idx_cached[i]],
                                                not_work_set,lmn);
             for(int j=0; j<lmn; ++j)
