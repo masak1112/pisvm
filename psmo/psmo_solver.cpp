@@ -872,7 +872,7 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
 // 	  const Qfloat *Q_i = Q.get_Q_subset(work_set[i],work_set,n);
             if(Q.is_cached(work_set[i]))
             {
-                const Qfloat *Q_i = Q.get_Q_subset(work_set[i],work_set,n);
+                const Qfloat *Q_i = Q.get_Q_subset(work_set[i],work_set,i+1);
                 for(int j=0; j<=i; ++j)
                 {
                     Q_bb[i*n+j] = Q_i[work_set[j]];
@@ -902,7 +902,7 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
         {
             if(Q.is_cached(work_set[i]))
             {
-                const Qfloat *Q_i = Q.get_Q_subset(work_set[i],work_set,n);
+                const Qfloat *Q_i = Q.get_Q_subset(work_set[i],work_set,i+1);
                 for(int j=0; j<=i; ++j)
                 {
                     Q_bb[i*n+j] = Q_i[work_set[j]];
