@@ -1748,7 +1748,7 @@ double Solver_NU::calculate_rho()
 //
 static void solve_c_svc(const svm_problem *prob, const svm_parameter* param,
                         double *alpha, Solver::SolutionInfo* si,
-                        double Cp, double Cn)
+                        double Cp, double Cn, MPI_Comm comm)
 {
     int l = prob->l;
     double *minus_ones = new double[l];
@@ -1772,15 +1772,15 @@ static void solve_c_svc(const svm_problem *prob, const svm_parameter* param,
 //  	   alpha, Cp, Cn, param->eps, si, param->shrinking);
 
     int size;
-    MPI_Comm_size(MPI_COMM_WORLD, &size);
+    MPI_Comm_size(comm, &size);
 
 #ifdef SOLVER_PSMO
-    Solver_Parallel_SMO sps(param->o, param->q, MPI_COMM_WORLD);
+    Solver_Parallel_SMO sps(param->o, param->q, comm);
     sps.Solve(l, SVC_Q(*prob,*param,y), minus_ones, y,
               alpha, Cp, Cn, param->eps, si, param->shrinking);
 #endif
 #ifdef SOLVER_LOQO
-    Solver_Parallel_LOQO spl(param->o, param->q, 1, MPI_COMM_WORLD,
+    Solver_Parallel_LOQO spl(param->o, param->q, 1, comm,
                              size, 1, param->o/size);
     spl.Solve(l, SVC_Q(*prob,*param,y), minus_ones, y,
               alpha, Cp, Cn, param->eps, si, param->shrinking);
@@ -1805,7 +1805,7 @@ static void solve_c_svc(const svm_problem *prob, const svm_parameter* param,
 }
 
 static void solve_nu_svc(const svm_problem *prob, const svm_parameter *param,
-                         double *alpha, Solver::SolutionInfo* si)
+                         double *alpha, Solver::SolutionInfo* si, MPI_Comm comm)
 {
     int i;
     int l = prob->l;
@@ -1845,15 +1845,15 @@ static void solve_nu_svc(const svm_problem *prob, const svm_parameter *param,
     }
 
     int size;
-    MPI_Comm_size(MPI_COMM_WORLD, &size);
+    MPI_Comm_size(comm, &size);
 
 #ifdef SOLVER_PSMO
-    Solver_Parallel_SMO_NU sps(param->o, param->q, MPI_COMM_WORLD);
+    Solver_Parallel_SMO_NU sps(param->o, param->q, comm);
     sps.Solve(l, SVC_Q(*prob,*param,y), zeros, y,
               alpha, 1.0, 1.0, param->eps, si,  param->shrinking);
 #endif
 #ifdef SOLVER_LOQO
-    Solver_Parallel_LOQO_NU spl(param->o, param->q, 2, MPI_COMM_WORLD,
+    Solver_Parallel_LOQO_NU spl(param->o, param->q, 2, comm,
                                 size, 1, param->o/size, nu);
     spl.Solve(l, SVC_Q(*prob,*param,y), zeros, y,
               alpha, 1.0, 1.0, param->eps, si,  param->shrinking);
@@ -2070,17 +2070,17 @@ struct decision_function
 
 decision_function svm_train_one(const svm_problem *prob,
                                 const svm_parameter *param,
-                                double Cp, double Cn)
+                                double Cp, double Cn, MPI_Comm comm)
 {
     double *alpha = Malloc(double,prob->l);
     Solver::SolutionInfo si;
     switch(param->svm_type)
     {
     case C_SVC:
-        solve_c_svc(prob,param,alpha,&si,Cp,Cn);
+        solve_c_svc(prob,param,alpha,&si,Cp,Cn, comm);
         break;
     case NU_SVC:
-        solve_nu_svc(prob,param,alpha,&si);
+        solve_nu_svc(prob,param,alpha,&si, comm);
         break;
     case ONE_CLASS:
         solve_one_class(prob,param,alpha,&si);
@@ -2564,7 +2564,7 @@ svm_model *svm_train(const svm_problem *prob, const svm_parameter *param)
             model->probA[0] = svm_svr_probability(prob,param);
         }
 
-        decision_function f = svm_train_one(prob,param,0,0);
+        decision_function f = svm_train_one(prob,param,0,0, MPI_COMM_WORLD);
         model->rho = Malloc(double,1);
         model->rho[0] = f.rho;
 
@@ -2645,9 +2645,26 @@ svm_model *svm_train(const svm_problem *prob, const svm_parameter *param)
             probB=Malloc(double,nr_class*(nr_class-1)/2);
         }
 
-        int p = 0;
+        MPI_Comm comm = MPI_COMM_WORLD;
+        int size;
+        int rank;
+        int isize;
+        int irank;
+        MPI_Comm_size(comm, &size);
+        MPI_Comm_rank(comm, &rank);
+        //if (size > nr_class*2) {
+        //TODO only split communicator when there are enough processes and classes
+            MPI_Comm_split(MPI_COMM_WORLD, 1 + (rank % 2), rank, &comm);
+            MPI_Comm_size(comm, &isize);
+            MPI_Comm_rank(comm, &irank);
+        //} else {
+//            isize = size;
+//            irank = rank;
+//        }
+
+        int p = rank % 2;
         for(i=0; i<nr_class; i++)
-            for(int j=i+1; j<nr_class; j++)
+            for(int j=i+1 + (rank % 2); j<nr_class; j+=2)
             {
                 svm_problem sub_prob;
                 int si = start[i], sj = start[j];
@@ -2677,7 +2694,7 @@ svm_model *svm_train(const svm_problem *prob, const svm_parameter *param)
                 if(param->probability)
                     svm_binary_svc_probability(&sub_prob,param,weighted_C[i],weighted_C[j],probA[p],probB[p]);
 
-                f[p] = svm_train_one(&sub_prob,param,weighted_C[i],weighted_C[j]);
+                f[p] = svm_train_one(&sub_prob,param,weighted_C[i],weighted_C[j], comm);
                 for(k=0; k<ci; k++)
                     if(!nonzero[si+k] && fabs(f[p].alpha[k]) > 0)
                         nonzero[si+k] = true;
@@ -2688,9 +2705,9 @@ svm_model *svm_train(const svm_problem *prob, const svm_parameter *param)
                 free(sub_prob.nz_idx);
                 free(sub_prob.x_len);
                 free(sub_prob.y);
-                ++p;
+                p += 2;
             }
-
+        //TODO get f[p]s from other root process. (f[p].alpha is a pointer to a double array of size ci+cj)
         // build output
 
         model->nr_class = nr_class;
