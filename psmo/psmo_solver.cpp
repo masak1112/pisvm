@@ -719,7 +719,8 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
     {
         info("Initializing gradient...");
         info_flush();
-        G = new double[l];
+        if (rank == 0)
+            G = new double[l];
         double *G_send = new double[l];
         //TODO memcpy & memset or calloc
         for(int i=0; i<l; ++i)
@@ -771,10 +772,13 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
                     G[i] += G_recv[i];
             }
         }*/
-        MPI_Allreduce(G_send,G,l,MPIfloat,MPI_SUM,comm);
-        for(int i=0; i<l; ++i)
+        MPI_Reduce(G_send,G,l,MPIfloat,MPI_SUM,0,comm);
+        if (rank == 0)
         {
-            G[i] += b[i];
+            for(int i=0; i<l; ++i)
+            {
+                G[i] += b[i];
+            }
         }
         delete[] G_send;
         info("done.\n");
@@ -860,7 +864,6 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
         time = MPI_Wtime();
         for(int i=0; i<n; ++i)
         {
-            c[i] = G[work_set[i]];
             alpha_b[i] = alpha[work_set[i]];
             a[i] = y[work_set[i]];
         }
@@ -949,15 +952,19 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
         {
             for(int j=0; j<i; ++j)
                 Q_bb[j*n+i] = Q_bb[i*n+j];
-        }
-        for(int i=0; i<n; ++i)
-        {
-            for(int j=0; j<n; ++j)
-            {
-                if(alpha[work_set[j]] > TOL_ZERO)
-                    c[i] -= Q_bb[i*n+j]*alpha[work_set[j]]; //TODO c is only used on rank == 0?
-            }
             QD_b[i] = Q_bb[i*n+i];
+        }
+        if (rank == 0) {
+            for(int i=0; i<n; ++i)
+            {
+                c[i] = G[work_set[i]];
+                for(int j=0; j<n; ++j)
+                {
+                    if(alpha[work_set[j]] > TOL_ZERO)
+                        c[i] -= Q_bb[i*n+j]*alpha[work_set[j]]; //TODO c is only used on rank == 0?
+                }
+
+            }
         }
         //info("done.\n"); info_flush();
         time = MPI_Wtime() - time;
@@ -1050,28 +1057,30 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
             update_alpha_status(work_set[i]);
         }
     } // while(1)
-    // Calculate rho
-    si->rho = calculate_rho(); //TODO: Only needed on rank == 0?
 
-    // Calculate objective value //TODO: Only needed on rank == 0?
-    {
-        double v = 0;
-        int i;
-        for(i=0; i<l; i++)
-            v += alpha[i] * (G[i] + b[i]);
+    if (rank == 0) {
+        // Calculate rho
+        si->rho = calculate_rho();
 
-        si->obj = v/2;
+        // Calculate objective value //TODO: Only needed on rank == 0?
+        {
+            double v = 0;
+            int i;
+            for(i=0; i<l; i++)
+                v += alpha[i] * (G[i] + b[i]);
+
+            si->obj = v/2;
+        }
+
+        // Put back the solution
+        {
+            for(int i=0; i<l; i++)
+                alpha_[i] = alpha[i];
+        }
+
+        si->upper_bound_p = Cp;
+        si->upper_bound_n = Cn;
     }
-
-    // Put back the solution
-    {
-        for(int i=0; i<l; i++)
-            alpha_[i] = alpha[i];
-    }
-
-    si->upper_bound_p = Cp;
-    si->upper_bound_n = Cn;
-
     total_time = MPI_Wtime() - total_time;
     // print timing statistics
     if(rank == 0)
@@ -1225,9 +1234,9 @@ void Solver_Parallel_SMO::setup_range(int *range_low, int *range_up,
 void Solver_Parallel_SMO::sync_gradient(int *work_set, int *not_work_set)
 {
     // Synchronize G_b
-    double *G_buf = new double[max(n,lmn)];
+    double *G_buf = new double[lmn];
     //TODO not needed copy?
-    if(rank == 0)
+    /*if(rank == 0)
     {
         for(int i=0; i<n; ++i)
             G_buf[i] = G[work_set[i]];
@@ -1238,7 +1247,7 @@ void Solver_Parallel_SMO::sync_gradient(int *work_set, int *not_work_set)
     {
         for(int i=0; i<n; ++i)
             G[work_set[i]] = G_buf[i];
-    }
+    }*/
 
     // Synchronize G_n
     //TODO Can i use Allreduce or something like that?
@@ -1255,8 +1264,9 @@ void Solver_Parallel_SMO::sync_gradient(int *work_set, int *not_work_set)
         for(int j=0; j<lmn; ++j)
             G[not_work_set[j]] += G_buf[j];
     }*/
-    MPI_Allreduce(G_n,G_buf,lmn,MPI_DOUBLE,MPI_SUM,comm);
-    for(int j=0; j<lmn; ++j)
-        G[not_work_set[j]] += G_buf[j];
+    MPI_Reduce(G_n,G_buf,lmn,MPI_DOUBLE,MPI_SUM,0,comm);
+    if (rank == 0)
+        for(int j=0; j<lmn; ++j)
+            G[not_work_set[j]] += G_buf[j];
     delete[] G_buf;
 }
