@@ -2652,9 +2652,10 @@ svm_model *svm_train(const svm_problem *prob, const svm_parameter *param)
         int irank;
         MPI_Comm_size(comm, &size);
         MPI_Comm_rank(comm, &rank);
+        int splits = 2;
         //if (size > nr_class*2) {
         //TODO only split communicator when there are enough processes and classes
-            MPI_Comm_split(MPI_COMM_WORLD, 1 + (rank % 2), rank, &comm);
+            MPI_Comm_split(MPI_COMM_WORLD, 1 + (rank % splits), rank, &comm);
             MPI_Comm_size(comm, &isize);
             MPI_Comm_rank(comm, &irank);
         //} else {
@@ -2662,9 +2663,9 @@ svm_model *svm_train(const svm_problem *prob, const svm_parameter *param)
 //            irank = rank;
 //        }
 
-        int p = rank % 2;
+        int p = rank % splits;
         for(i=0; i<nr_class; i++)
-            for(int j=i+1 + (rank % 2); j<nr_class; j+=2)
+            for(int j=i+1 + (rank % splits); j<nr_class; j+=splits)
             {
                 svm_problem sub_prob;
                 int si = start[i], sj = start[j];
@@ -2705,7 +2706,7 @@ svm_model *svm_train(const svm_problem *prob, const svm_parameter *param)
                 free(sub_prob.nz_idx);
                 free(sub_prob.x_len);
                 free(sub_prob.y);
-                p += 2;
+                p += splits;
             }
         //TODO get f[p]s from other root process. (f[p].alpha is a pointer to a double array of size ci+cj)
         // build output
