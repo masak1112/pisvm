@@ -79,8 +79,10 @@ int main(int argc, char **argv)
     }
     else
     {
+        int rank;
+        MPI_Comm_rank(MPI_COMM_WORLD, &rank);
         model = svm_train(&prob,&param);
-        svm_save_model(model_file_name,model);
+        if (rank == 0) svm_save_model(model_file_name,model);
         svm_destroy_model(model);
     }
     svm_destroy_param(&param);
