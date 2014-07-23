@@ -2842,6 +2842,7 @@ svm_model *svm_train(const svm_problem *prob, const svm_parameter *param)
             free(nz_start);
             free(nz_count);
         } else {
+            model->nr_class = 0;
             model->label = NULL;
             model->rho = NULL;
             model->probA = NULL;
