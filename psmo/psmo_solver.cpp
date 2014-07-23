@@ -721,6 +721,8 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
         info_flush();
         if (rank == 0)
             G = new double[l];
+        else
+            G = NULL;
         double *G_send = new double[l];
         //TODO memcpy & memset or calloc
         for(int i=0; i<l; ++i)
