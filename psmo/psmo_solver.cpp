@@ -1134,6 +1134,7 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
     delete[] idx_cached;
     delete[] idx_not_cached;
     delete[] nz;
+    delete[] old_idx;
 }
 
 void Solver_Parallel_SMO::determine_cached(int *work_set)
