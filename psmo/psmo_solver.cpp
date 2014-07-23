@@ -436,8 +436,10 @@ int Solver_Parallel_SMO::select_working_set(int *work_set, int *not_work_set)
     // check for optimality
     //  printf("Gmax1 + Gmax2 = %g < %g\n", Gmax1+Gmax2,eps);
     info(" %g\n", Gmax1+Gmax2);
-    if(Gmax1 + Gmax2 < eps)
+    if(Gmax1 + Gmax2 < eps) {
+        delete[] old_work_set;
         return 1;
+    }
 
     // Compute yG
     double *yG = new double[l];
@@ -598,6 +600,9 @@ int Solver_Parallel_SMO::select_working_set(int *work_set, int *not_work_set)
         else
         {
             info("Error: Unable to select a suitable working set!!!\n");
+            delete[] yG;
+            delete[] pidx;
+            delete[] old_work_set;
             return 1;
         }
     }
