@@ -2092,8 +2092,9 @@ decision_function svm_train_one(const svm_problem *prob,
         solve_nu_svr(prob,param,alpha,&si);
         break;
     }
-
-    info("obj = %f, rho = %f\n",si.obj,si.rho);
+    int rank;
+    MPI_Comm_rank(comm, &rank);
+    if (rank == 0) info("obj = %f, rho = %f\n",si.obj,si.rho);
 
     // output SVs
 
@@ -2117,7 +2118,7 @@ decision_function svm_train_one(const svm_problem *prob,
         }
     }
 
-    info("nSV = %d, nBSV = %d\n",nSV,nBSV);
+    if (rank == 0) info("nSV = %d, nBSV = %d\n",nSV,nBSV);
 
     decision_function f;
     f.alpha = alpha;
