@@ -923,7 +923,7 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
             MPI_Type_commit(&tr);
 
 
-            MPI_Allgather(MPI_IN_PLACE, 1, t, Q_bb, 1, tr, comm);
+            MPI_Gather(rank == 0 ? MPI_IN_PLACE : Q_bb + rank*n, 1, t, Q_bb, 1, tr, 0, comm);
             if (n%size != 0) {
                 int *displ = new int[size];
                 int *cnt = new int[size];
@@ -931,7 +931,7 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
                     displ[i] = i*n;
                     cnt[i] = i < n%size ? n : 0;
                 }
-                MPI_Allgatherv(MPI_IN_PLACE,cnt[rank],Qmpitype,&Q_bb[n*(n-(n%size))],cnt,displ,Qmpitype,comm);
+                MPI_Gatherv(rank == 0 ? MPI_IN_PLACE : Q_bb + n*(n-(n%size)) + rank*n,cnt[rank],Qmpitype,&Q_bb[n*(n-(n%size))],cnt,displ,Qmpitype,0, comm);
                 delete[] displ;
                 delete[] cnt;
             }
@@ -948,15 +948,15 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
             CheckError(ierr);
             num_elements += (n_up[k]-n_low[k])*n;
         }*/
-        //TODO: Do all processes need to create the full Q_bb?
         // Complete symmetric Q
-        for(int i=0; i<n; ++i)
-        {
-            for(int j=0; j<i; ++j)
-                Q_bb[j*n+i] = Q_bb[i*n+j];
-            QD_b[i] = Q_bb[i*n+i];
-        }
         if (rank == 0) {
+            for(int i=0; i<n; ++i)
+            {
+                for(int j=0; j<i; ++j)
+                    Q_bb[j*n+i] = Q_bb[i*n+j];
+                QD_b[i] = Q_bb[i*n+i];
+            }
+
             for(int i=0; i<n; ++i)
             {
                 c[i] = G[work_set[i]];
