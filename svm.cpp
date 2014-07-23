@@ -2633,9 +2633,9 @@ svm_model *svm_train(const svm_problem *prob, const svm_parameter *param)
 
         // train k*(k-1)/2 models
 
-        bool *nonzero = Malloc(bool,l);
+        int *nonzero = Malloc(int,l);
         for(i=0; i<l; i++)
-            nonzero[i] = false;
+            nonzero[i] = 0;
         decision_function *f = Malloc(decision_function,nr_class*(nr_class-1)/2);
 
         double *probA=NULL,*probB=NULL;
@@ -2645,17 +2645,18 @@ svm_model *svm_train(const svm_problem *prob, const svm_parameter *param)
             probB=Malloc(double,nr_class*(nr_class-1)/2);
         }
 
-        MPI_Comm comm = MPI_COMM_WORLD;
+        MPI_Comm bigcomm = MPI_COMM_WORLD;
+        MPI_Comm comm;
         int size;
         int rank;
         int isize;
         int irank;
-        MPI_Comm_size(comm, &size);
-        MPI_Comm_rank(comm, &rank);
+        MPI_Comm_size(bigcomm, &size);
+        MPI_Comm_rank(bigcomm, &rank);
         int splits = 2;
         //if (size > nr_class*2) {
         //TODO only split communicator when there are enough processes and classes
-            MPI_Comm_split(MPI_COMM_WORLD, 1 + (rank % splits), rank, &comm);
+            MPI_Comm_split(bigcomm, 1 + (rank % splits), rank, &comm);
             MPI_Comm_size(comm, &isize);
             MPI_Comm_rank(comm, &irank);
         //} else {
@@ -2663,10 +2664,15 @@ svm_model *svm_train(const svm_problem *prob, const svm_parameter *param)
 //            irank = rank;
 //        }
 
-        int p = rank % splits;
+        int p = 0;
         for(i=0; i<nr_class; i++)
-            for(int j=i+1 + (rank % splits); j<nr_class; j+=splits)
+            for(int j=i+1; j<nr_class; j++)
             {
+                if (p % splits != rank % splits) {
+                    f[p].alpha = NULL;
+                    p++;
+                    continue;
+                }
                 svm_problem sub_prob;
                 int si = start[i], sj = start[j];
                 int ci = count[i], cj = count[j];
@@ -2698,110 +2704,150 @@ svm_model *svm_train(const svm_problem *prob, const svm_parameter *param)
                 f[p] = svm_train_one(&sub_prob,param,weighted_C[i],weighted_C[j], comm);
                 for(k=0; k<ci; k++)
                     if(!nonzero[si+k] && fabs(f[p].alpha[k]) > 0)
-                        nonzero[si+k] = true;
+                        nonzero[si+k] = 1;
                 for(k=0; k<cj; k++)
                     if(!nonzero[sj+k] && fabs(f[p].alpha[ci+k]) > 0)
-                        nonzero[sj+k] = true;
+                        nonzero[sj+k] = 1;
                 free(sub_prob.x);
                 free(sub_prob.nz_idx);
                 free(sub_prob.x_len);
                 free(sub_prob.y);
-                p += splits;
+                p ++;
             }
-        //TODO get f[p]s from other root process. (f[p].alpha is a pointer to a double array of size ci+cj)
-        // build output
+        //get f[p]s from other root process. (f[p].alpha is a pointer to a double array of size ci+cj)
+        if (splits > 1) {
+            int p = 0;
+            for(i=0; i<nr_class; i++)
+                for(int j=i+1; j<nr_class; j++) {
+                    if ((rank != 0 && p % splits != rank % splits) || p % splits == 0) {
+                        p++;
+                        continue;
+                    }
+                    int ci = count[i], cj = count[j];
+                    if (irank == 0 && p % splits == rank % splits) {
+                        //Master Process of split 'split'
+                        //Send
+                        MPI_Send(&(f[p].rho), 1, MPI_DOUBLE, 0, rank % splits, bigcomm);
+                        MPI_Send(f[p].alpha, ci+cj, MPI_DOUBLE, 0, rank % splits, bigcomm);
+                    } else if (rank == 0) {
 
-        model->nr_class = nr_class;
-
-        model->label = Malloc(int,nr_class);
-        for(i=0; i<nr_class; i++)
-            model->label[i] = label[i];
-
-        model->rho = Malloc(double,nr_class*(nr_class-1)/2);
-        for(i=0; i<nr_class*(nr_class-1)/2; i++)
-            model->rho[i] = f[i].rho;
-
-        if(param->probability)
-        {
-            model->probA = Malloc(double,nr_class*(nr_class-1)/2);
-            model->probB = Malloc(double,nr_class*(nr_class-1)/2);
-            for(i=0; i<nr_class*(nr_class-1)/2; i++)
-            {
-                model->probA[i] = probA[i];
-                model->probB[i] = probB[i];
-            }
-        }
-        else
-        {
-            model->probA=NULL;
-            model->probB=NULL;
-        }
-
-        int total_sv = 0;
-        int *nz_count = Malloc(int,nr_class);
-        model->nSV = Malloc(int,nr_class);
-        for(i=0; i<nr_class; i++)
-        {
-            int nSV = 0;
-            for(int j=0; j<count[i]; j++)
-                if(nonzero[start[i]+j])
-                {
-                    ++nSV;
-                    ++total_sv;
+                        //Global master
+                        //Recv
+                        MPI_Status status;
+                        MPI_Recv(&f[p].rho, 1, MPI_DOUBLE, MPI_ANY_SOURCE, p % splits, bigcomm, &status);
+                        f[p].alpha = Malloc(double,ci+cj);
+                        MPI_Recv(f[p].alpha, ci+cj, MPI_DOUBLE, MPI_ANY_SOURCE, p % splits, bigcomm, &status);
+                    }
+                    p+=1;
                 }
-            model->nSV[i] = nSV;
-            nz_count[i] = nSV;
+            MPI_Reduce(rank == 0 ? MPI_IN_PLACE : nonzero, nonzero, l, MPI_INT, MPI_LOR, 0, bigcomm);
         }
 
-        info("Total nSV = %d\n",total_sv);
+        // build output
+        if (rank == 0) {
+            model->nr_class = nr_class;
 
-        model->l = total_sv;
-        model->SV = Malloc(Xfloat *, total_sv);
-        model->nz_sv = Malloc(int *, total_sv);
-        model->sv_len = Malloc(int, total_sv);
-        p = 0;
-        for(i=0; i<l; i++)
-            if(nonzero[i])
+            model->label = Malloc(int,nr_class);
+            for(i=0; i<nr_class; i++)
+                model->label[i] = label[i];
+
+            model->rho = Malloc(double,nr_class*(nr_class-1)/2);
+            for(i=0; i<nr_class*(nr_class-1)/2; i++)
+                model->rho[i] = f[i].rho;
+
+            if(param->probability)
             {
-                model->SV[p] = x[i];
-                model->nz_sv[p] = nz_idx[i];
-                model->sv_len[p] = x_len[i];
-                ++p;
+                model->probA = Malloc(double,nr_class*(nr_class-1)/2);
+                model->probB = Malloc(double,nr_class*(nr_class-1)/2);
+                for(i=0; i<nr_class*(nr_class-1)/2; i++)
+                {
+                    model->probA[i] = probA[i];
+                    model->probB[i] = probB[i];
+                }
             }
-        int *nz_start = Malloc(int,nr_class);
-        nz_start[0] = 0;
-        for(i=1; i<nr_class; i++)
-            nz_start[i] = nz_start[i-1]+nz_count[i-1];
-
-        model->sv_coef = Malloc(double *,nr_class-1);
-        for(i=0; i<nr_class-1; i++)
-            model->sv_coef[i] = Malloc(double,total_sv);
-
-        p = 0;
-        for(i=0; i<nr_class; i++)
-            for(int j=i+1; j<nr_class; j++)
+            else
             {
-                // classifier (i,j): coefficients with
-                // i are in sv_coef[j-1][nz_start[i]...],
-                // j are in sv_coef[i][nz_start[j]...]
-
-                int si = start[i];
-                int sj = start[j];
-                int ci = count[i];
-                int cj = count[j];
-
-                int q = nz_start[i];
-                int k;
-                for(k=0; k<ci; k++)
-                    if(nonzero[si+k])
-                        model->sv_coef[j-1][q++] = f[p].alpha[k];
-                q = nz_start[j];
-                for(k=0; k<cj; k++)
-                    if(nonzero[sj+k])
-                        model->sv_coef[i][q++] = f[p].alpha[ci+k];
-                ++p;
+                model->probA=NULL;
+                model->probB=NULL;
             }
 
+            int total_sv = 0;
+            int *nz_count = Malloc(int,nr_class);
+            model->nSV = Malloc(int,nr_class);
+            for(i=0; i<nr_class; i++)
+            {
+                int nSV = 0;
+                for(int j=0; j<count[i]; j++)
+                    if(nonzero[start[i]+j])
+                    {
+                        ++nSV;
+                        ++total_sv;
+                    }
+                model->nSV[i] = nSV;
+                nz_count[i] = nSV;
+            }
+
+            info("Total nSV = %d\n",total_sv);
+
+            model->l = total_sv;
+            model->SV = Malloc(Xfloat *, total_sv);
+            model->nz_sv = Malloc(int *, total_sv);
+            model->sv_len = Malloc(int, total_sv);
+            p = 0;
+            for(i=0; i<l; i++)
+                if(nonzero[i])
+                {
+                    model->SV[p] = x[i];
+                    model->nz_sv[p] = nz_idx[i];
+                    model->sv_len[p] = x_len[i];
+                    ++p;
+                }
+            int *nz_start = Malloc(int,nr_class);
+            nz_start[0] = 0;
+            for(i=1; i<nr_class; i++)
+                nz_start[i] = nz_start[i-1]+nz_count[i-1];
+
+            model->sv_coef = Malloc(double *,nr_class-1);
+            for(i=0; i<nr_class-1; i++)
+                model->sv_coef[i] = Malloc(double,total_sv);
+
+            p = 0;
+            for(i=0; i<nr_class; i++)
+                for(int j=i+1; j<nr_class; j++)
+                {
+                    // classifier (i,j): coefficients with
+                    // i are in sv_coef[j-1][nz_start[i]...],
+                    // j are in sv_coef[i][nz_start[j]...]
+
+                    int si = start[i];
+                    int sj = start[j];
+                    int ci = count[i];
+                    int cj = count[j];
+
+                    int q = nz_start[i];
+                    int k;
+                    for(k=0; k<ci; k++)
+                        if(nonzero[si+k])
+                            model->sv_coef[j-1][q++] = f[p].alpha[k];
+                    q = nz_start[j];
+                    for(k=0; k<cj; k++)
+                        if(nonzero[sj+k])
+                            model->sv_coef[i][q++] = f[p].alpha[ci+k];
+                    ++p;
+                }
+            free(nz_start);
+            free(nz_count);
+        } else {
+            model->label = NULL;
+            model->rho = NULL;
+            model->probA = NULL;
+            model->probB = NULL;
+            model->nSV = NULL;
+            model->SV = NULL;
+            model->nz_sv = NULL;
+            model->sv_len = NULL;
+            model->sv_coef = NULL;
+        }
         free(label);
         free(probA);
         free(probB);
@@ -2816,8 +2862,6 @@ svm_model *svm_train(const svm_problem *prob, const svm_parameter *param)
         for(i=0; i<nr_class*(nr_class-1)/2; i++)
             free(f[i].alpha);
         free(f);
-        free(nz_count);
-        free(nz_start);
     }
     return model;
 }
