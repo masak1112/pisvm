@@ -2654,22 +2654,25 @@ svm_model *svm_train(const svm_problem *prob, const svm_parameter *param)
         int irank;
         MPI_Comm_size(bigcomm, &size);
         MPI_Comm_rank(bigcomm, &rank);
-        int splits = 2;
-        //if (size > nr_class*2) {
-        //TODO only split communicator when there are enough processes and classes
+        int splits = 1;
+        //TODO bigger splits?
+        if (size/2 >= 2 && nr_class >= 2) {
+            //only split communicator when there are enough processes and classes
+            splits = 2;
             MPI_Comm_split(bigcomm, 1 + (rank % splits), rank, &comm);
             MPI_Comm_size(comm, &isize);
             MPI_Comm_rank(comm, &irank);
-        //} else {
-//            isize = size;
-//            irank = rank;
-//        }
+        } else {
+            comm = bigcomm;
+            isize = size;
+            irank = rank;
+        }
 
         int p = 0;
         for(i=0; i<nr_class; i++)
             for(int j=i+1; j<nr_class; j++)
             {
-                if (p % splits != rank % splits) {
+                if (p % splits != rank % splits && splits > 1) {
                     f[p].alpha = NULL;
                     p++;
                     continue;
