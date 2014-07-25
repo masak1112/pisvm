@@ -2680,8 +2680,6 @@ svm_model *svm_train(const svm_problem *prob, const svm_parameter *param)
             }
             MPI_Bcast(&myP, 1, MPI_INT, 0, comm);
             didWeDo[myP] = true;
-            printf("%d got p: %d\n", rank, myP);
-
         } else {
             comm = bigcomm;
             isize = size;
