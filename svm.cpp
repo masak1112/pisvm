@@ -2655,25 +2655,44 @@ svm_model *svm_train(const svm_problem *prob, const svm_parameter *param)
         MPI_Comm_size(bigcomm, &size);
         MPI_Comm_rank(bigcomm, &rank);
         int splits = 1;
+        MPI_Win pWindow;
+        bool * didWeDo = new bool[nr_class*(nr_class-1)/2];
+        int globalp = 0;
+        int myP = 0;
+        const int increment = 1;
+        for (int i = 0; i < nr_class*(nr_class-1)/2; i++) didWeDo[i] = false;
         //TODO bigger splits?
         if (size/2 >= 2 && nr_class >= 2) {
+            MPI_Info info;
+            MPI_Info_create(&info);
+            MPI_Win_create(&globalp, rank == 0 ? 1 : 0, sizeof(int),info, bigcomm, &pWindow);
+            MPI_Info_free(&info);
+
             //only split communicator when there are enough processes and classes
             splits = 2;
             MPI_Comm_split(bigcomm, 1 + (rank % splits), rank, &comm);
             MPI_Comm_size(comm, &isize);
             MPI_Comm_rank(comm, &irank);
+            if (irank == 0) {
+                MPI_Win_lock(MPI_LOCK_EXCLUSIVE, 0, 0, pWindow);
+                MPI_Fetch_and_op(&increment, &myP,MPI_INT, 0, 0, MPI_SUM, pWindow);
+                MPI_Win_unlock(0,pWindow);
+            }
+            MPI_Bcast(&myP, 1, MPI_INT, 0, comm);
+            didWeDo[myP] = true;
+            printf("%d got p: %d\n", rank, myP);
+
         } else {
             comm = bigcomm;
             isize = size;
             irank = rank;
         }
-
         int p = 0;
         for(i=0; i<nr_class; i++)
             for(int j=i+1; j<nr_class; j++)
             {
-                if (p % splits != rank % splits && splits > 1) {
-                    f[p].alpha = NULL;
+                if (splits > 1 && p < myP) {
+                    //We don't do this iteration
                     p++;
                     continue;
                 }
@@ -2716,37 +2735,53 @@ svm_model *svm_train(const svm_problem *prob, const svm_parameter *param)
                 free(sub_prob.nz_idx);
                 free(sub_prob.x_len);
                 free(sub_prob.y);
-                p ++;
+                if (splits > 1) {
+                    if (irank == 0) {
+                        MPI_Win_lock(MPI_LOCK_EXCLUSIVE, 0, 0, pWindow);
+                        MPI_Fetch_and_op(&increment, &myP,MPI_INT, 0, 0, MPI_SUM, pWindow);
+                        MPI_Win_unlock(0,pWindow);
+                    }
+                    MPI_Bcast(&myP, 1, MPI_INT, 0, comm);
+                    didWeDo[myP] = true;
+                }
+                p++;
+
             }
         //get f[p]s from other root process. (f[p].alpha is a pointer to a double array of size ci+cj)
         if (splits > 1) {
+            for(i = 0; i < nr_class*(nr_class-1)/2; i++)
+                if(!didWeDo[i])
+                    f[i].alpha = NULL;
             int p = 0;
             for(i=0; i<nr_class; i++)
                 for(int j=i+1; j<nr_class; j++) {
-                    if ((rank != 0 && p % splits != rank % splits) || p % splits == 0) {
+                    if ((!didWeDo[p] && rank != 0) || irank != 0) {
+                        p++;
+                        continue;
+                    } else if (rank == 0 && didWeDo[p]) {
                         p++;
                         continue;
                     }
                     int ci = count[i], cj = count[j];
-                    if (irank == 0 && p % splits == rank % splits) {
+                    if (irank == 0 && didWeDo[p]) {
                         //Master Process of split 'split'
                         //Send
-                        MPI_Send(&(f[p].rho), 1, MPI_DOUBLE, 0, rank % splits, bigcomm);
-                        MPI_Send(f[p].alpha, ci+cj, MPI_DOUBLE, 0, rank % splits, bigcomm);
+                        MPI_Send(&(f[p].rho), 1, MPI_DOUBLE, 0, p, bigcomm);
+                        MPI_Send(f[p].alpha, ci+cj, MPI_DOUBLE, 0, p, bigcomm);
                     } else if (rank == 0) {
-
                         //Global master
                         //Recv
                         MPI_Status status;
-                        MPI_Recv(&f[p].rho, 1, MPI_DOUBLE, MPI_ANY_SOURCE, p % splits, bigcomm, &status);
+                        MPI_Recv(&f[p].rho, 1, MPI_DOUBLE, MPI_ANY_SOURCE, p, bigcomm, &status);
                         f[p].alpha = Malloc(double,ci+cj);
-                        MPI_Recv(f[p].alpha, ci+cj, MPI_DOUBLE, MPI_ANY_SOURCE, p % splits, bigcomm, &status);
+                        MPI_Recv(f[p].alpha, ci+cj, MPI_DOUBLE, MPI_ANY_SOURCE, p, bigcomm, &status);
                     }
                     p+=1;
                 }
+            //TODO only communicate with rank 0 of subcomms
             MPI_Reduce(rank == 0 ? MPI_IN_PLACE : nonzero, nonzero, l, MPI_INT, MPI_LOR, 0, bigcomm);
         }
-
+        delete[] didWeDo;
         // build output
         if (rank == 0) {
             model->nr_class = nr_class;
