@@ -2889,7 +2889,7 @@ void svm_cross_validation(const svm_problem *prob, const svm_parameter *param,
         subprob.nz_idx = Malloc(int *, subprob.l);
         subprob.x_len = Malloc(int, subprob.l);
         subprob.y = Malloc(double,subprob.l);
-
+        subprob.max_idx = prob->max_idx;
         k=0;
         for(j=0; j<begin; j++)
         {
