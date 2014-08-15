@@ -724,7 +724,6 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
         else
             G = NULL;
         double *G_send = new double[l];
-        //TODO memcpy & memset or calloc
         for(int i=0; i<l; ++i)
         {
             G_send[i] = 0;
@@ -757,23 +756,6 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
         }
         delete[] idx_not_lower;
         // Get contributions from other processors
-        /*for(int k=0; k<size; ++k)
-        {
-            if(rank == k)
-            {
-                ierr = MPI_Bcast(G_send, l, MPIfloat, k, comm);
-                CheckError(ierr);
-                for(int i=0; i<l; ++i)
-                    G[i] += G_send[i];
-            }
-            else
-            {
-                ierr = MPI_Bcast(G_recv, l, MPIfloat, k, comm);
-                CheckError(ierr);
-                for(int i=0; i<l; ++i)
-                    G[i] += G_recv[i];
-            }
-        }*/
         MPI_Reduce(G_send,G,l,MPIfloat,MPI_SUM,0,comm);
         if (rank == 0)
         {
@@ -870,7 +852,6 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
             a[i] = y[work_set[i]];
         }
         //      info("Setting up Q_bb..."); info_flush();
-        //TODO: work is very unbalanced because every process only calculates half the matrix.
         for(int i=rank; i<n; i+=size)
         {
 // 	  const Qfloat *Q_i = Q.get_Q_subset(work_set[i],work_set,n);
@@ -905,12 +886,8 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
             }
         }
         // Synchronize Q_bb
-        //ierr = MPI_Barrier(comm);
-        //CheckError(ierr);
-        //int num_elements = 0;
-        //TODO Allgather/Alltoall?
-        //Do not need to send the full row, because only j<i has been changed?
-        //Every Process sends his part of Q_bb to all other processes
+        //Do not need to send the full row, because only j<i has been changed
+        //Every Process sends his part of Q_bb to the root process, cause its the only one that uses it.
         {
             MPI_Datatype t,tr;
             int *indexed_cnt = new int[n/size];
@@ -943,13 +920,6 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
             delete[] indexed_displ;
 
         }
-        /*for(int k=0; k<size; ++k)
-        {
-            ierr = MPI_Bcast(&Q_bb[num_elements], (n_up[k]-n_low[k])*n,
-                             MPI_FLOAT, k, comm);
-            CheckError(ierr);
-            num_elements += (n_up[k]-n_low[k])*n;
-        }*/
         // Complete symmetric Q
         if (rank == 0) {
             for(int i=0; i<n; ++i)
@@ -965,7 +935,7 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
                 for(int j=0; j<n; ++j)
                 {
                     if(alpha[work_set[j]] > TOL_ZERO)
-                        c[i] -= Q_bb[i*n+j]*alpha[work_set[j]]; //TODO c is only used on rank == 0?
+                        c[i] -= Q_bb[i*n+j]*alpha[work_set[j]];
                 }
 
             }
@@ -984,6 +954,7 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
             info(" %11.2f |", time);
             info_flush();
             inner_solver_time += time;
+            //TODO maybe the other processes could start filling the cache while waiting for the master to finish: calculating something that 'might' be used is better than not doing anything
         }
         // Send alpha_b to other processors
         ierr = MPI_Bcast(alpha_b, n, MPI_DOUBLE, 0, comm);
@@ -1029,6 +1000,7 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
         for(int i=0; i<count_cached; ++i)
         {
             //Even if Q_i 'is_cached' does not mean the not_work_subset is cached. it might be the case, that only work_set is cached.
+            //But due to the fact, that only this part of the calculation actually caches calculations we might be good.
             const Qfloat *Q_i = Q.get_Q_subset(work_set[idx_cached[i]],
                                                not_work_set,lmn);
             for(int j=0; j<lmn; ++j)
@@ -1067,7 +1039,7 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
         // Calculate rho
         si->rho = calculate_rho();
 
-        // Calculate objective value //TODO: Only needed on rank == 0?
+        // Calculate objective value
         {
             double v = 0;
             int i;
@@ -1152,12 +1124,6 @@ void Solver_Parallel_SMO::determine_cached(int *work_set)
             p_cache_status[rank*l + i] = NOT_CACHED;
     }
     // Synchronize parallel cache status
-    //TODO Use MPI-AllGather/AlltoAll?
-    /*for(int k=0; k<size; ++k)
-    {
-        ierr = MPI_Bcast(&p_cache_status[k*l], l, MPI_CHAR, k, comm);
-        CheckError(ierr);
-    }*/
     MPI_Allgather(MPI_IN_PLACE,l,MPI_CHAR,p_cache_status,l,MPI_CHAR,comm);
 
     // Smart parallel cache handling
@@ -1238,37 +1204,8 @@ void Solver_Parallel_SMO::setup_range(int *range_low, int *range_up,
 
 void Solver_Parallel_SMO::sync_gradient(int *work_set, int *not_work_set)
 {
-    // Synchronize G_b
     double *G_buf = new double[lmn];
-    //TODO not needed copy?
-    /*if(rank == 0)
-    {
-        for(int i=0; i<n; ++i)
-            G_buf[i] = G[work_set[i]];
-    }
-    ierr = MPI_Bcast(G_buf, n, MPI_DOUBLE, 0, comm);
-    CheckError(ierr);
-    if(rank != 0)
-    {
-        for(int i=0; i<n; ++i)
-            G[work_set[i]] = G_buf[i];
-    }*/
-
     // Synchronize G_n
-    //TODO Can i use Allreduce or something like that?
-    /*for(int i=0; i<size; ++i)
-    {
-        if(rank == i)
-        {
-            for(int j=0; j<lmn; ++j)
-                G_buf[j] = G_n[j];
-        }
-        ierr = MPI_Bcast(G_buf, lmn, MPI_DOUBLE, i, comm);
-        CheckError(ierr);
-        // Accumulate contributions
-        for(int j=0; j<lmn; ++j)
-            G[not_work_set[j]] += G_buf[j];
-    }*/
     MPI_Reduce(G_n,G_buf,lmn,MPI_DOUBLE,MPI_SUM,0,comm);
     if (rank == 0)
         for(int j=0; j<lmn; ++j)
