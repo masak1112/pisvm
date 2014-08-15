@@ -61,7 +61,7 @@ class Cache
 public:
   Cache(int l,int size);
   ~Cache();
-
+    int max_cached_rows;
   // request data [0,len)
   // return some position p where [p,len) need to be filled
   // (p >= len if nothing needs to be filled)
@@ -91,6 +91,7 @@ Cache::Cache(int l_,int size_):l(l_),size(size_)
   size /= sizeof(Qfloat);
   size -= l * sizeof(head_t) / sizeof(Qfloat);
   size = max(size, 2*l);	// cache must be large enough for two columns
+  max_cached_rows = size/l;
   lru_head.next = lru_head.prev = &lru_head;
 }
 
@@ -199,25 +200,27 @@ public:
   virtual Qfloat *get_QD() const = 0;
   virtual Qfloat *get_Q_subset(int i, int *idxs, int n) const = 0;
   virtual Qfloat get_non_cached(int i, int j) const = 0;
+  virtual int max_cached() const = 0;
   virtual bool is_cached(int i) const = 0;
   virtual void swap_index(int i, int j) const = 0;
   virtual ~QMatrix() {}
-};  
+};
 
 class Kernel: public QMatrix {
 public:
-  Kernel(int l, Xfloat **x, int **nz_idx, 
-	 const int *x_len, const int max_idx, 
+  Kernel(int l, Xfloat **x, int **nz_idx,
+	 const int *x_len, const int max_idx,
 	 const svm_parameter& param);
   virtual ~Kernel();
 
   static double k_function(const Xfloat *x, const int *nz_x, const int lx,
-			   Xfloat *y, int *nz_y, int ly, 
+			   Xfloat *y, int *nz_y, int ly,
 			   const svm_parameter& param);
   virtual Qfloat *get_Q(int column, int len) const = 0;
   virtual Qfloat *get_QD() const = 0;
   virtual Qfloat *get_Q_subset(int i, int *idxs, int n) const = 0;
   virtual Qfloat get_non_cached(int i, int j) const = 0;
+  virtual int max_cached() const = 0;
   virtual bool is_cached(int i) const = 0;
   virtual void swap_index(int i, int j) const	// no so const...
   {
@@ -240,7 +243,7 @@ private:
   int *x_len;
   double *x_square;
   // dense unrolled sparse vector
-  mutable Xfloat *v; 
+  mutable Xfloat *v;
   // index of currently unrolled vector
   mutable int unrolled;
   int max_idx;
@@ -251,7 +254,7 @@ private:
   const double gamma;
   const double coef0;
 
-  static double dot(const Xfloat *x, const int *nz_x, const int lx, 
+  static double dot(const Xfloat *x, const int *nz_x, const int lx,
 		    const Xfloat *y, const int *nz_y, const int ly);
   double dot(const int i, const int j) const
   {
@@ -288,7 +291,7 @@ private:
   }
 };
 
-Kernel::Kernel(int l, Xfloat **x_, int **nz_idx_, 
+Kernel::Kernel(int l, Xfloat **x_, int **nz_idx_,
 	       const int *x_len_, const int max_idx_,
 	       const svm_parameter& param)
   :kernel_type(param.kernel_type), degree(param.degree),
@@ -338,11 +341,11 @@ Kernel::~Kernel()
   delete[] x_square;
 }
 
-double Kernel::dot(const Xfloat *x, const int *nz_x, const int lx, 
+double Kernel::dot(const Xfloat *x, const int *nz_x, const int lx,
 		   const Xfloat *y, const int *nz_y, const int ly)
 {
   register double sum = 0;
-  register int i = 0; 
+  register int i = 0;
   register int j = 0;
   while(i < lx && j < ly)
     {
@@ -360,7 +363,7 @@ double Kernel::dot(const Xfloat *x, const int *nz_x, const int lx,
 }
 
 double Kernel::k_function(const Xfloat *x, const int *nz_x, const int lx,
-			  Xfloat *y, int *nz_y, int ly, 
+			  Xfloat *y, int *nz_y, int ly,
 			  const svm_parameter& param)
 {
   switch(param.kernel_type)
@@ -507,7 +510,7 @@ void Solver::reconstruct_gradient()
   int i;
   for(i=active_size;i<l;i++)
     G[i] = G_bar[i] + b[i];
-	
+
   for(i=0;i<active_size;i++)
     if(is_free(i))
       {
@@ -602,11 +605,11 @@ void Solver::Solve(int l, const QMatrix& Q, const double *b_, const schar *y_,
 	  else
 	    counter = 1;	// do shrinking next iteration
 	}
-		
+
       ++iter;
 
       // update alpha[i] and alpha[j], handle bounds carefully
-		
+
       const Qfloat *Q_i = Q.get_Q(i,active_size);
       const Qfloat *Q_j = Q.get_Q(j,active_size);
 
@@ -625,7 +628,7 @@ void Solver::Solve(int l, const QMatrix& Q, const double *b_, const schar *y_,
 	  double diff = alpha[i] - alpha[j];
 	  alpha[i] += delta;
 	  alpha[j] += delta;
-			
+
 	  if(diff > 0)
 	    {
 	      if(alpha[j] < 0)
@@ -711,7 +714,7 @@ void Solver::Solve(int l, const QMatrix& Q, const double *b_, const schar *y_,
 
       double delta_alpha_i = alpha[i] - old_alpha_i;
       double delta_alpha_j = alpha[j] - old_alpha_j;
-		
+
       for(int k=0;k<active_size;k++)
 	{
 	  G[k] += Q_i[k]*delta_alpha_i + Q_j[k]*delta_alpha_j;
@@ -805,7 +808,7 @@ int Solver::select_working_set(int &out_i, int &out_j)
   // j: minimizes the decrease of obj value
   //    (if quadratic coefficeint <= 0, replace it with tau)
   //    -y_j*grad(f)_j < -y_i*grad(f)_i, j in I_low(\alpha)
-	
+
   double Gmax = -INF;
   int Gmax_idx = -1;
   int Gmin_idx = -1;
@@ -814,7 +817,7 @@ int Solver::select_working_set(int &out_i, int &out_j)
 //   printf("G = ");
   for(int t=0;t<active_size;t++)
     {
-      if(y[t]==+1)	
+      if(y[t]==+1)
 	{
 	  if(!is_upper_bound(t))
 	    if(-G[t] > Gmax)
@@ -849,7 +852,7 @@ int Solver::select_working_set(int &out_i, int &out_j)
 	      double grad_diff=Gmax+G[j];
 	      if (grad_diff >= eps)
 		{
-		  double obj_diff; 
+		  double obj_diff;
 		  double quad_coef=Q_i[i]+QD[j]-2*y[i]*Q_i[j];
 		  //	  printf("%g ", quad_coef);
 		  if (quad_coef > 0)
@@ -872,7 +875,7 @@ int Solver::select_working_set(int &out_i, int &out_j)
 	      double grad_diff= Gmax-G[j];
 	      if (grad_diff >= eps)
 		{
-		  double obj_diff; 
+		  double obj_diff;
 		  double quad_coef=Q_i[i]+QD[j]+2*y[i]*Q_i[j];
 // 		  printf("%g ", quad_coef);
 		  if (quad_coef > 0)
@@ -968,7 +971,7 @@ void Solver::do_shrinking()
   double Gm2 = y[i]*G[i];
 
   // shrink
-	
+
   for(k=0;k<active_size;k++)
     {
       if(is_lower_bound(k))
@@ -997,7 +1000,7 @@ void Solver::do_shrinking()
   // unshrink, check all variables again before final iterations
 
   if(unshrinked || -(Gm1 + Gm2) > eps*10) return;
-	
+
   unshrinked = true;
   reconstruct_gradient();
 
@@ -1077,6 +1080,10 @@ public:
     Qfloat *get_QD() const;
     Qfloat get_non_cached(int i, int j) const;
     inline bool is_cached(const int i) const;
+    virtual int max_cached() const {
+        return 0;
+    }
+
     void swap_index(int i, int j) const;
     virtual ~SVQ_No_Cache();
 private:
@@ -1157,7 +1164,9 @@ public:
         for(int i=0; i<prob.l; i++)
             QD[i]= (Qfloat)(this->*kernel_function)(i,i);
     }
-
+    virtual int max_cached() const {
+        return cache->max_cached_rows;
+    }
     Qfloat *get_Q(int i, int len) const
     {
         Qfloat *data;
@@ -1237,7 +1246,9 @@ public:
         for(int i=0; i<prob.l; i++)
             QD[i]= (Qfloat)(this->*kernel_function)(i,i);
     }
-
+    virtual int max_cached() const {
+        return cache->max_cached_rows;
+    }
     Qfloat *get_Q(int i, int len) const
     {
         Qfloat *data;
@@ -1324,7 +1335,9 @@ public:
         buffer[1] = new Qfloat[2*l];
         next_buffer = 0;
     }
-
+    virtual int max_cached() const{
+        return cache->max_cached_rows;
+    }
     void swap_index(int i, int j) const
     {
         swap(sign[i],sign[j]);
@@ -1534,12 +1547,12 @@ int Solver_NU::select_working_set(int &out_i, int &out_j)
 //     {
 //       if(y[j]==+1)
 // 	{
-// 	  if (!is_lower_bound(j))	
+// 	  if (!is_lower_bound(j))
 // 	    {
 // 	      double grad_diff=Gmaxp+G[j];
 // 	      if (grad_diff >= eps)
 // 		{
-// 		  double obj_diff; 
+// 		  double obj_diff;
 // 		  double quad_coef = Q_ip[ip]+QD[j]-2*Q_ip[j];
 // 		  if (quad_coef > 0)
 // 		    obj_diff = -(grad_diff*grad_diff)/quad_coef;
@@ -1561,7 +1574,7 @@ int Solver_NU::select_working_set(int &out_i, int &out_j)
 // 	      double grad_diff=Gmaxn-G[j];
 // 	      if (grad_diff >= eps)
 // 		{
-// 		  double obj_diff; 
+// 		  double obj_diff;
 // 		  double quad_coef = Q_in[in]+QD[j]-2*Q_in[j];
 // 		  if (quad_coef > 0)
 // 		    obj_diff = -(grad_diff*grad_diff)/quad_coef;
@@ -1611,7 +1624,7 @@ void Solver_NU::do_shrinking()
       if(!is_lower_bound(k))
 	{
 	  if(y[k]==+1)
-	    {	
+	    {
 	      if(G[k] > Gmax2) Gmax2 = G[k];
 	    }
 	  else	if(G[k] > Gmax4) Gmax4 = G[k];
@@ -1653,7 +1666,7 @@ void Solver_NU::do_shrinking()
   // unshrink, check all variables again before final iterations
 
   if(unshrinked || max(-(Gm1+Gm2),-(Gm3+Gm4)) > eps*10) return;
-	
+
   unshrinked = true;
   reconstruct_gradient();
 
@@ -1731,12 +1744,12 @@ double Solver_NU::calculate_rho()
     r1 = sum_free1/nr_free1;
   else
     r1 = (ub1+lb1)/2;
-	
+
   if(nr_free2 > 0)
     r2 = sum_free2/nr_free2;
   else
     r2 = (ub2+lb2)/2;
-	
+
   si->r = (r1+r2)/2;
   printf("(r1+r2)/2 = %g\n", (r1+r2)/2);
   printf("(r1+r2)/2 = %g\n", (r1-r2)/2);

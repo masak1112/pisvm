@@ -955,10 +955,36 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
             info_flush();
             inner_solver_time += time;
             //TODO maybe the other processes could start filling the cache while waiting for the master to finish: calculating something that 'might' be used is better than not doing anything
+            // Send alpha_b to other processors
+            MPI_Request request;
+            ierr = MPI_Ibcast(alpha_b, n, MPI_DOUBLE, 0, comm, &request);
+            MPI_Wait(&request, MPI_STATUS_IGNORE);
+            CheckError(ierr);
+        } else {
+            MPI_Request request;
+            MPI_Ibcast(alpha_b, n, MPI_DOUBLE, 0, comm, &request);
+            int max_cached_rows = Q.max_cached();
+            int cached = 0;
+            for (int i = rank; i < n; i+=size) {
+                if (Q.is_cached(i)) {
+                    //We already have it cached, so we move it to the front of the cache.
+                    Q.get_Q_subset(i,not_work_set,lmn);
+                    cached++;
+                }
+            }
+            int readyflag;
+            for (int i = rank; i < n; i+=size) {
+                MPI_Test(&request, &readyflag, MPI_STATUS_IGNORE);
+                if (cached == max_cached_rows || readyflag) break;
+                if (!Q.is_cached(i)) {
+                    //Its not cached, so we calculate it now
+                    Q.get_Q_subset(i,not_work_set,lmn);
+                    cached++;
+                }
+            }
+            MPI_Wait(&request, MPI_STATUS_IGNORE);
         }
-        // Send alpha_b to other processors
-        ierr = MPI_Bcast(alpha_b, n, MPI_DOUBLE, 0, comm);
-        CheckError(ierr);
+
 
         // Update gradient.
         time = MPI_Wtime();
