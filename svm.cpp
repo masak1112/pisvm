@@ -198,6 +198,7 @@ public:
     virtual Qfloat *get_Q(int column, int len) const = 0;
     virtual Qfloat *get_QD() const = 0;
     virtual Qfloat *get_Q_subset(int i, int *idxs, int n) const = 0;
+    virtual Qfloat *get_Q_subset_omp(int i, int *idxs, int n) const = 0;
     virtual Qfloat get_non_cached(int i, int j) const = 0;
     virtual bool is_cached(int i) const = 0;
     virtual void swap_index(int i, int j) const = 0;
@@ -217,6 +218,7 @@ public:
     virtual Qfloat *get_Q(int column, int len) const = 0;
     virtual Qfloat *get_QD() const = 0;
     virtual Qfloat *get_Q_subset(int i, int *idxs, int n) const = 0;
+    virtual Qfloat *get_Q_subset_omp(int i, int *idxs, int n) const = 0;
     virtual Qfloat get_non_cached(int i, int j) const = 0;
     virtual bool is_cached(int i) const = 0;
     virtual void swap_index(int i, int j) const	// no so const...
@@ -1123,6 +1125,7 @@ public:
     SVQ_No_Cache(Qfloat *Q_bb_, Qfloat *QD_, const int n_);
     Qfloat *get_Q(int i, int len) const;
     Qfloat *get_Q_subset(int i, int *idxs, int n) const;
+    Qfloat *get_Q_subset_omp(int i, int *idxs, int n) const;
     Qfloat *get_QD() const;
     Qfloat get_non_cached(int i, int j) const;
     inline bool is_cached(const int i) const;
@@ -1151,6 +1154,12 @@ Qfloat *SVQ_No_Cache::get_Q(int i, int len) const
 }
 
 Qfloat *SVQ_No_Cache::get_Q_subset(int i, int *idxs, int n) const
+{
+    printf("Error: Not implemented yet!\n");
+    exit(1);
+    return NULL;
+}
+Qfloat *SVQ_No_Cache::get_Q_subset_omp(int i, int *idxs, int n) const
 {
     printf("Error: Not implemented yet!\n");
     exit(1);
@@ -1213,6 +1222,7 @@ public:
         int start;
         if((start = cache->get_data(i,&data,len)) < len)
         {
+            #pragma omp parallel for
             for(int j=start; j<len; j++)
                 data[j] = (Qfloat)(y[i]*y[j]*(this->*kernel_function)(i,j));
         }
@@ -1242,6 +1252,25 @@ public:
         return data;
     }
 
+    Qfloat *get_Q_subset_omp(int i, int *idxs, int n) const
+    {
+        Qfloat *data;
+        int start = cache->get_data(i,&data,l);
+        if(start == 0) // Initialize cache row
+        {
+            #pragma omp parallel for
+            for(int j=0; j<l; ++j)
+                data[j] = NAN;
+        }
+        #pragma omp parallel for schedule(dynamic) if (n > 16)
+        for(int j=0; j<n; ++j)
+        {
+            if(isnan(data[idxs[j]]))
+                data[idxs[j]] = (Qfloat)(y[i]*y[idxs[j]]*
+                                         (this->*kernel_function)(i,idxs[j]));
+        }
+        return data;
+    }
     Qfloat get_non_cached(int i, int j) const
     {
         return (Qfloat) y[i]*y[j]*(this->*kernel_function)(i,j);
@@ -1293,6 +1322,7 @@ public:
         int start;
         if((start = cache->get_data(i,&data,len)) < len)
         {
+            #pragma omp parallel for
             for(int j=start; j<len; j++)
                 data[j] = (Qfloat)(this->*kernel_function)(i,j);
         }
@@ -1313,6 +1343,24 @@ public:
             for(int j=0; j<l; ++j)
                 data[j] = NAN;
         }
+        for(int j=0; j<n; ++j)
+        {
+            if(isnan(data[idxs[j]]))
+                data[idxs[j]] = (Qfloat)(this->*kernel_function)(i,idxs[j]);
+        }
+        return data;
+    }
+    Qfloat *get_Q_subset_omp(int i, int *idxs, int n) const
+    {
+        Qfloat *data;
+        int start = cache->get_data(i,&data,l);
+        if(start == 0) // Initialize cache row
+        {
+            #pragma omp parallel for
+            for(int j=0; j<l; ++j)
+                data[j] = NAN;
+        }
+        #pragma omp parallel for schedule(dynamic) if (n > 16)
         for(int j=0; j<n; ++j)
         {
             if(isnan(data[idxs[j]]))
@@ -1387,6 +1435,7 @@ public:
         int real_i = index[i];
         if(cache->get_data(real_i,&data,l) < l)
         {
+            #pragma omp parallel for
             for(int j=0; j<l; j++)
                 data[j] = (Qfloat)(this->*kernel_function)(real_i,j);
         }
@@ -1427,6 +1476,36 @@ public:
         Qfloat *buf = buffer[next_buffer];
         next_buffer = 1 - next_buffer;
         schar si = sign[i];
+        for(int j=0; j<n; ++j)
+            buf[idxs[j]] = si * sign[idxs[j]] * data[index[idxs[j]]];
+        return buf;
+    }
+
+    Qfloat *get_Q_subset_omp(int i, int *idxs, int n) const
+    {
+        Qfloat *data;
+        int real_i = index[i];
+        int start = cache->get_data(real_i,&data,l);
+        if(start == 0) // Initialize cache row
+        {
+            #pragma omp parallel for
+            for(int j=0; j<l; ++j)
+            {
+                data[j] = NAN;
+            }
+        }
+        #pragma omp parallel for schedule(dynamic) if (n > 16)
+        for(int j=0; j<n; ++j)
+        {
+            int real_j = index[idxs[j]];
+            if(isnan(data[real_j]))
+                data[real_j] = (Qfloat)(this->*kernel_function)(real_i,real_j);
+        }
+        // reorder and copy
+        Qfloat *buf = buffer[next_buffer];
+        next_buffer = 1 - next_buffer;
+        schar si = sign[i];
+        #pragma omp parallel for if (n > 16)
         for(int j=0; j<n; ++j)
             buf[idxs[j]] = si * sign[idxs[j]] * data[index[idxs[j]]];
         return buf;

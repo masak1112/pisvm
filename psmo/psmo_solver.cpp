@@ -751,6 +751,7 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
         {
             const Qfloat *Q_i = Q.get_Q(idx_not_lower[i],l);
             double alpha_i = alpha[idx_not_lower[i]];
+            #pragma omp parallel for
             for(int j=0; j<l; ++j)
                 G_send[j] += alpha_i * Q_i[j];
         }
@@ -862,7 +863,8 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
             {
                 //Q is_cached does not mean we can access the whole subset for free: it might happen, that only
                 // the not_work_subset is cached and all values have to be calculated!
-                const Qfloat *Q_i = Q.get_Q_subset(work_set[i],work_set,i+1);
+                const Qfloat *Q_i = Q.get_Q_subset_omp(work_set[i],work_set,i+1);
+                #pragma omp parallel for if(i > 16)
                 for(int j=0; j<=i; ++j)
                 {
                     Q_bb[i*n+j] = Q_i[work_set[j]];
@@ -870,6 +872,7 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
             }
             else if(old_idx[i] == -1) //TODO old_idx is only written for rank = 0 and not written for Parallel_Solver_NU?
             {
+                #pragma omp parallel for if(i > 16)
                 for(int j=0; j<=i; ++j)
                 {
                     // 	      Q_bb[i*n+j] = Q_i[work_set[j]];
@@ -878,6 +881,7 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
             }
             else // => old_idx[i] != -1 => we know an old index.
             {
+                #pragma omp parallel for if(i > 16)
                 for(int j=0; j<i; ++j)
                 {
                     if(old_idx[j] == -1)
@@ -925,7 +929,7 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
         }
         // Complete symmetric Q
         if (rank == 0) {
-            //#pragma omp parallel for default(none) shared(n,Q_bb,QD_b) schedule(dynamic)
+            #pragma omp parallel for schedule(dynamic)
             for(int i=0; i<n; ++i)
             {
                 for(int j=0; j<i; ++j)
@@ -1007,7 +1011,7 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
         {
             //Even if Q_i 'is_cached' does not mean the not_work_subset is cached. it might be the case, that only work_set is cached.
             //But due to the fact, that only this part of the calculation actually caches calculations we might be good.
-            const Qfloat *Q_i = Q.get_Q_subset(work_set[idx_cached[i]],
+            const Qfloat *Q_i = Q.get_Q_subset_omp(work_set[idx_cached[i]],
                                                not_work_set,lmn);
             #pragma omp parallel for
             for(int j=0; j<lmn; ++j)
@@ -1016,7 +1020,7 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
         // ...now update the non-cached part
         for(int i=0; i<count_not_cached; ++i)
         {
-            const Qfloat *Q_i = Q.get_Q_subset(work_set[idx_not_cached[i]],
+            const Qfloat *Q_i = Q.get_Q_subset_omp(work_set[idx_not_cached[i]],
                                                not_work_set,lmn);
             #pragma omp parallel for
             for(int j=0; j<lmn; ++j)
