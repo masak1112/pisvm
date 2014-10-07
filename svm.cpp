@@ -819,28 +819,43 @@ int Solver::select_working_set(int &out_i, int &out_j)
     double obj_diff_min = INF;
 
 //   printf("G = ");
+#pragma omp parallel
+{
+    double myGmax = -INF;
+    int myGmax_idx = -1;
+    #pragma omp for
     for(int t=0; t<active_size; t++)
     {
         if(y[t]==+1)
         {
             if(!is_upper_bound(t))
-                if(-G[t] > Gmax)
+                if(-G[t] > myGmax)
                 {
-                    Gmax = -G[t];
-                    Gmax_idx = t;
+                    myGmax = -G[t];
+                    myGmax_idx = t;
                 }
         }
         else
         {
             if(!is_lower_bound(t))
-                if(G[t] > Gmax)
+                if(G[t] > myGmax)
                 {
-                    Gmax = G[t];
-                    Gmax_idx = t;
+                    myGmax = G[t];
+                    myGmax_idx = t;
                 }
         }
 //       printf("%g ",G[t]);
     }
+    if (myGmax > Gmax) {
+        #pragma omp critical
+        {
+            if (myGmax > Gmax) {
+                Gmax = myGmax;
+                Gmax_idx = myGmax_idx;
+            }
+        }
+    }
+}
 //   printf("\nGmax = %g\n", Gmax);
     int i = Gmax_idx;
     const Qfloat *Q_i = NULL;
@@ -910,7 +925,13 @@ int Solver::select_working_set(int &out_i, int &out_j)
 int Solver::max_violating_pair(int &out_i, int &out_j)
 {
     // return i,j: maximal violating pair
+    double globalGmax1 = -INF;
+    int globalGmax1_idx = -1;
+    double globalGmax2 = -INF;
+    int globalGmax2_idx = -1;
 
+#pragma omp parallel
+{
     double Gmax1 = -INF;		// max { -y_i * grad(f)_i | i in I_up(\alpha) }
     int Gmax1_idx = -1;
 
@@ -958,12 +979,32 @@ int Solver::max_violating_pair(int &out_i, int &out_j)
             }
         }
     }
+    if (Gmax1 >= globalGmax1) {
+        #pragma omp critical
+        {
+            if (Gmax1 >= globalGmax1) {
+                globalGmax1 = Gmax1;
+                globalGmax1_idx = Gmax1_idx;
+            }
+        }
+    }
+
+    if (Gmax2 >= globalGmax2) {
+        #pragma omp critical
+        {
+            if (Gmax2 >= globalGmax2) {
+                globalGmax2 = Gmax2;
+                globalGmax2_idx = Gmax2_idx;
+            }
+        }
+    }
+}
     //printf("Gmax1+Gmax2 = %g, i=%d, j=%d\n", Gmax1+Gmax2, Gmax1_idx, Gmax2_idx);
-    if(Gmax1+Gmax2 < eps)
+    if(globalGmax1+globalGmax2 < eps)
         return 1;
 
-    out_i = Gmax1_idx;
-    out_j = Gmax2_idx;
+    out_i = globalGmax1_idx;
+    out_j = globalGmax2_idx;
     return 0;
 }
 
@@ -1039,6 +1080,7 @@ double Solver::calculate_rho()
     double r;
     int nr_free = 0;
     double ub = INF, lb = -INF, sum_free = 0;
+    #pragma omp parallel for reduction(max:lb) reduction(min:ub) reduction(+:nr_free,sum_free)
     for(int i=0; i<active_size; i++)
     {
         double yG = y[i]*G[i];

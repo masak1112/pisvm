@@ -2,7 +2,7 @@
 # $Id: Makefile 573 2010-12-29 10:54:20Z dome $
 CXXC = mpicxx
 CC = mpicc
-CFLAGS = -Wall -O3
+CFLAGS = -Wall -O3 -fopenmp
 # Use following flags for debugging/profiling
 #CFLAGS = -Wall -pg -g
 #CFLAGS = -Wall -O3 -pg

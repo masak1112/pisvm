@@ -759,6 +759,7 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
         MPI_Reduce(G_send,G,l,MPIfloat,MPI_SUM,0,comm);
         if (rank == 0)
         {
+            #pragma omp parallel for
             for(int i=0; i<l; ++i)
             {
                 G[i] += b[i];
@@ -846,12 +847,14 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
         ++iter;
         // Setup subproblem
         time = MPI_Wtime();
+        #pragma omp parallel for
         for(int i=0; i<n; ++i)
         {
             alpha_b[i] = alpha[work_set[i]];
             a[i] = y[work_set[i]];
         }
         //      info("Setting up Q_bb..."); info_flush();
+        //TODO OpenMP?
         for(int i=rank; i<n; i+=size)
         {
 // 	  const Qfloat *Q_i = Q.get_Q_subset(work_set[i],work_set,n);
@@ -922,13 +925,14 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
         }
         // Complete symmetric Q
         if (rank == 0) {
+            //#pragma omp parallel for default(none) shared(n,Q_bb,QD_b) schedule(dynamic)
             for(int i=0; i<n; ++i)
             {
                 for(int j=0; j<i; ++j)
                     Q_bb[j*n+i] = Q_bb[i*n+j];
                 QD_b[i] = Q_bb[i*n+i];
             }
-
+            #pragma omp parallel for
             for(int i=0; i<n; ++i)
             {
                 c[i] = G[work_set[i]];
@@ -976,6 +980,7 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
         {
             // Only first processor does updating, since
             // it has the whole Q_bb
+            #pragma omp parallel for schedule(dynamic)
             for(int i=0; i<n; ++i)
                 for(int j=0; j<n; ++j) // G_b
                 {
@@ -994,6 +999,7 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
         //      printf("count_cached = %d\n", count_cached);
         // info("Updating G_n..."); info_flush();
         // Compute G_n
+        #pragma omp parallel for
         for(int j=0; j<lmn; ++j)
             G_n[j] = 0;
         // First update the cached part...
@@ -1003,6 +1009,7 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
             //But due to the fact, that only this part of the calculation actually caches calculations we might be good.
             const Qfloat *Q_i = Q.get_Q_subset(work_set[idx_cached[i]],
                                                not_work_set,lmn);
+            #pragma omp parallel for
             for(int j=0; j<lmn; ++j)
                 G_n[j] += Q_i[not_work_set[j]] * delta_alpha[idx_cached[i]];
         }
@@ -1011,6 +1018,7 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
         {
             const Qfloat *Q_i = Q.get_Q_subset(work_set[idx_not_cached[i]],
                                                not_work_set,lmn);
+            #pragma omp parallel for
             for(int j=0; j<lmn; ++j)
                 G_n[j] += Q_i[not_work_set[j]] * delta_alpha[idx_not_cached[i]];
         }
@@ -1028,6 +1036,7 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
         info_flush();
 
         // Update alpha
+        #pragma omp parallel for
         for(int i=0; i<n; ++i)
         {
             alpha[work_set[i]] = alpha_b[i];
@@ -1043,6 +1052,7 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
         {
             double v = 0;
             int i;
+            #pragma omp parallel for reduction(+:v)
             for(i=0; i<l; i++)
                 v += alpha[i] * (G[i] + b[i]);
 
@@ -1051,6 +1061,7 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
 
         // Put back the solution
         {
+            #pragma omp parallel for
             for(int i=0; i<l; i++)
                 alpha_[i] = alpha[i];
         }
