@@ -665,6 +665,10 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
     this->Cp = Cp;
     this->Cn = Cn;
     this->eps = eps;
+    if (n > l) {
+        n = l;
+        n_old = l;
+    }
     this->lmn = l - n;
     this->G_n = new double[lmn];
     int *work_set = new int[n];
