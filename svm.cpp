@@ -324,6 +324,7 @@ Kernel::Kernel(int l, Xfloat **x_, int **nz_idx_,
     if(kernel_type == RBF)
     {
         x_square = new double[l];
+        #pragma omp parallel for
         for(int i=0; i<l; i++)
             x_square[i] = dot(i,i);
     }
@@ -514,6 +515,7 @@ void Solver::reconstruct_gradient()
     if(active_size == l) return;
 
     int i;
+    #pragma omp parallel for
     for(i=active_size; i<l; i++)
         G[i] = G_bar[i] + b[i];
 
@@ -522,6 +524,7 @@ void Solver::reconstruct_gradient()
         {
             const Qfloat *Q_i = Q->get_Q(i,l);
             double alpha_i = alpha[i];
+            #pragma omp parallel for
             for(int j=active_size; j<l; j++)
                 G[j] += alpha_i * Q_i[j];
         }
@@ -545,6 +548,7 @@ void Solver::Solve(int l, const QMatrix& Q, const double *b_, const schar *y_,
     // initialize alpha_status
     {
         alpha_status = new char[l];
+        #pragma omp parallel for
         for(int i=0; i<l; i++)
             update_alpha_status(i);
     }
@@ -552,6 +556,7 @@ void Solver::Solve(int l, const QMatrix& Q, const double *b_, const schar *y_,
     // initialize active set (for shrinking)
     {
         active_set = new int[l];
+        #pragma omp parallel for
         for(int i=0; i<l; i++)
             active_set[i] = i;
         active_size = l;
@@ -563,6 +568,7 @@ void Solver::Solve(int l, const QMatrix& Q, const double *b_, const schar *y_,
         G = new double[l];
         G_bar = new double[l];
         int i;
+        #pragma omp parallel for
         for(i=0; i<l; i++)
         {
             G[i] = b[i];
@@ -574,9 +580,11 @@ void Solver::Solve(int l, const QMatrix& Q, const double *b_, const schar *y_,
                 const Qfloat *Q_i = Q.get_Q(i,l);
                 double alpha_i = alpha[i];
                 int j;
+                #pragma omp parallel for
                 for(j=0; j<l; j++)
                     G[j] += alpha_i*Q_i[j];
                 if(is_upper_bound(i))
+                    #pragma omp parallel for
                     for(j=0; j<l; j++)
                         G_bar[j] += get_C(i) * Q_i[j];
             }
@@ -721,6 +729,7 @@ void Solver::Solve(int l, const QMatrix& Q, const double *b_, const schar *y_,
         double delta_alpha_i = alpha[i] - old_alpha_i;
         double delta_alpha_j = alpha[j] - old_alpha_j;
 
+        #pragma omp parallel for
         for(int k=0; k<active_size; k++)
         {
             G[k] += Q_i[k]*delta_alpha_i + Q_j[k]*delta_alpha_j;
@@ -738,9 +747,11 @@ void Solver::Solve(int l, const QMatrix& Q, const double *b_, const schar *y_,
             {
                 Q_i = Q.get_Q(i,l);
                 if(ui)
+                    #pragma omp parallel for
                     for(k=0; k<l; k++)
                         G_bar[k] -= C_i * Q_i[k];
                 else
+                    #pragma omp parallel for
                     for(k=0; k<l; k++)
                         G_bar[k] += C_i * Q_i[k];
             }
@@ -749,9 +760,11 @@ void Solver::Solve(int l, const QMatrix& Q, const double *b_, const schar *y_,
             {
                 Q_j = Q.get_Q(j,l);
                 if(uj)
+                    #pragma omp parallel for
                     for(k=0; k<l; k++)
                         G_bar[k] -= C_j * Q_j[k];
                 else
+                    #pragma omp parallel for
                     for(k=0; k<l; k++)
                         G_bar[k] += C_j * Q_j[k];
             }
@@ -817,8 +830,6 @@ int Solver::select_working_set(int &out_i, int &out_j)
 
     double Gmax = -INF;
     int Gmax_idx = -1;
-    int Gmin_idx = -1;
-    double obj_diff_min = INF;
 
 //   printf("G = ");
 #pragma omp parallel
@@ -864,6 +875,14 @@ int Solver::select_working_set(int &out_i, int &out_j)
     if(i != -1) // NULL Q_i not accessed: Gmax=-INF if i=-1
         Q_i = Q->get_Q(i,active_size);
 //   printf("quad_coef=");
+    int Gmin_idx = -1;
+    double obj_diff_min = INF;
+    int globalGmin_idx = -1;
+    double globalobj_diff_min = INF;
+
+#pragma omp parallel firstprivate(Gmin_idx,obj_diff_min)
+{
+    #pragma omp for
     for(int j=0; j<active_size; j++)
     {
         if(y[j]==+1)
@@ -913,6 +932,20 @@ int Solver::select_working_set(int &out_i, int &out_j)
             }
         }
     }
+
+    //Keeping the smalles obj_diff with the biggest index
+    if (obj_diff_min <= globalobj_diff_min/* && Gmin_idx > globalGmin_idx*/) { //Don't check for index here because of race conditions
+        #pragma omp critical
+        {
+            if (obj_diff_min <= globalobj_diff_min && Gmin_idx > globalGmin_idx) {
+                globalobj_diff_min = obj_diff_min;
+                globalGmin_idx = Gmin_idx;
+            }
+        }
+    }
+
+}
+    Gmin_idx = globalGmin_idx;
 //   printf("\n");
     if(Gmin_idx == -1)
         return 1;
