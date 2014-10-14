@@ -469,15 +469,15 @@ int Solver_Parallel_SMO::select_working_set(int *work_set, int *not_work_set)
     int nselect = iter == 0 ? n : q;
     while(top > bot && count < nselect)
     {
-        while(!(is_free(pidx[top])
+        while(top>= 0 && (!(is_free(pidx[top])
                 || (is_upper_bound(pidx[top]) && y[pidx[top]] == +1)
                 || (is_lower_bound(pidx[top]) && y[pidx[top]] == -1)
-               ))
+               )))
             --top;
-        while(!(is_free(pidx[bot])
+        while(bot < l && (!(is_free(pidx[bot])
                 || (is_upper_bound(pidx[bot]) && y[pidx[bot]] == -1)
                 || (is_lower_bound(pidx[bot]) && y[pidx[bot]] == +1)
-               ))
+               )))
             ++bot;
         if(top > bot)
         {
@@ -667,6 +667,7 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
     this->eps = eps;
     if (n > l) {
         n = l;
+        q = l;
         n_old = l;
     }
     this->lmn = l - n;
