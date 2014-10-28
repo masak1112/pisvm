@@ -330,5 +330,6 @@ int main(int argc, char **argv)
     free(nz_x);
     fclose(input);
     fclose(output);
+    MPI_Finalize();
     return 0;
 }

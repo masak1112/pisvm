@@ -25,10 +25,6 @@ apply to the parts of the LibSVM code, that is svm.h, svm.cpp,
 pisvm-train.c pisvm-predict.c and pisvm-scale.c. All of the
 pisvm-*.c files contain changes made to enable parallel training.
 
-All of the svm_* files contain code extracted from the svm.cpp
-file to increase readability and therefor the conditions in
-COPYRIGHT-LibSVM also apply to these files.
-
 All other source code, including the parallel LOQO solver in
 subdirectory loqo and the parallel SMO solver in subdirectory
 psmo is licensed under the terms of the GPL as given in LICENSE.txt
