@@ -1,6 +1,6 @@
 # D. Brugger, december 2006
 # $Id: Makefile 573 2010-12-29 10:54:20Z dome $
-CXXC = mpicxx
+CXXC = mpicxx.mpich2
 CC = mpicc
 CFLAGS = -Wall -O3
 # Use following flags for debugging/profiling
