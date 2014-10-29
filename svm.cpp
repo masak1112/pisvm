@@ -2671,7 +2671,24 @@ svm_model *svm_train(const svm_problem *prob, const svm_parameter *param)
         int globalp = 0;
         int myP = 0;
         const int increment = 1;
+        int *classifierSize = new int[nr_class*(nr_class-1)/2];
+        int *classifierLabels = new int[nr_class*(nr_class-1)/2];
+
+        {
+            int p = 0;
+            for (int i = 0; i < nr_class; i++) {
+                for(int j=i+1; j<nr_class; j++) {
+                    classifierSize[p] = count[i] + count[j];
+                    classifierLabels[p] = i*nr_class + j;
+                    p+=1;
+                }
+            }
+            //Sort binary multiclass classifiers by number of samples
+            quick_sort(classifierSize, classifierLabels, 0, nr_class*(nr_class-1)/2 - 1);
+        }
+
         for (int i = 0; i < nr_class*(nr_class-1)/2; i++) didWeDo[i] = false;
+
         //TODO bigger splits?
         if (size/2 >= 2 && nr_class >= 2) {
             MPI_Info info;
@@ -2696,18 +2713,29 @@ svm_model *svm_train(const svm_problem *prob, const svm_parameter *param)
             isize = size;
             irank = rank;
         }
-        int p = 0;
-        for(i=0; i<nr_class; i++)
-            for(int j=i+1; j<nr_class; j++)
+        int classifier = 0;
+        int p;
+        while (classifier < nr_class*(nr_class-1)/2)
             {
-                if (splits > 1 && p < myP) {
-                    //We don't do this iteration
-                    p++;
-                    continue;
+                if (splits > 1) {
+                    if (irank == 0) {
+                        MPI_Win_lock(MPI_LOCK_EXCLUSIVE, 0, 0, pWindow);
+                        MPI_Fetch_and_op(&increment, &classifier,MPI_INT, 0, 0, MPI_SUM, pWindow);
+                        MPI_Win_unlock(0,pWindow);
+                    }
+                    MPI_Bcast(&classifier, 1, MPI_INT, 0, comm);
+                }
+                int i = classifierLabels[nr_class*(nr_class-1)/2 - classifier - 1]/nr_class;
+                int j = classifierLabels[nr_class*(nr_class-1)/2 - classifier - 1]%nr_class;
+                p = j-i;
+                for (int a = 0; a < i; a++) {
+                    p+=nr_class-a - 1;
                 }
                 svm_problem sub_prob;
                 int si = start[i], sj = start[j];
                 int ci = count[i], cj = count[j];
+                if (irank == 0) printf("%d classifier %d: %d-%d with %d samples\n",p, classifier, i,j,ci+cj);
+                if (splits > 1) didWeDo[p] = true;
                 sub_prob.l = ci+cj;
                 sub_prob.max_idx = prob->max_idx;
                 sub_prob.x = Malloc(Xfloat *, sub_prob.l);
@@ -2744,17 +2772,9 @@ svm_model *svm_train(const svm_problem *prob, const svm_parameter *param)
                 free(sub_prob.nz_idx);
                 free(sub_prob.x_len);
                 free(sub_prob.y);
-                if (splits > 1) {
-                    if (irank == 0) {
-                        MPI_Win_lock(MPI_LOCK_EXCLUSIVE, 0, 0, pWindow);
-                        MPI_Fetch_and_op(&increment, &myP,MPI_INT, 0, 0, MPI_SUM, pWindow);
-                        MPI_Win_unlock(0,pWindow);
-                    }
-                    MPI_Bcast(&myP, 1, MPI_INT, 0, comm);
-                    didWeDo[myP] = true;
+                if (splits <= 1) {
+                    classifier++;
                 }
-                p++;
-
             }
         //get f[p]s from other root process. (f[p].alpha is a pointer to a double array of size ci+cj)
         if (splits > 1) {
