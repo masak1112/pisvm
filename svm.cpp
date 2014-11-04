@@ -973,6 +973,7 @@ int Solver::max_violating_pair(int &out_i, int &out_j)
     double Gmax2 = -INF;		// max { y_i * grad(f)_i | i in I_low(\alpha) }
     int Gmax2_idx = -1;
 
+    #pragma omp for
     for(int i=0; i<active_size; i++)
     {
         if(y[i]==+1)	// y = +1
