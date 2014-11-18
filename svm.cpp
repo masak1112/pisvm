@@ -779,6 +779,7 @@ void Solver::Solve(int l, const QMatrix& Q, const double *b_, const schar *y_,
     {
         double v = 0;
         int i;
+        #pragma omp parallel for reduction(+:v)
         for(i=0; i<l; i++)
             v += alpha[i] * (G[i] + b[i]);
 
@@ -788,6 +789,7 @@ void Solver::Solve(int l, const QMatrix& Q, const double *b_, const schar *y_,
     // put back the solution
     {
 //     info("alpha = ");
+        #pragma omp parallel for
         for(int i=0; i<l; i++)
         {
             alpha_[active_set[i]] = alpha[i];
@@ -868,7 +870,7 @@ int Solver::select_working_set(int &out_i, int &out_j)
             }
         }
     }
-}
+} //End: pragma omp parallel
 //   printf("\nGmax = %g\n", Gmax);
     int i = Gmax_idx;
     const Qfloat *Q_i = NULL;
