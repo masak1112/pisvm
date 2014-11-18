@@ -941,14 +941,16 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
                     Q_bb[j*n+i] = Q_bb[i*n+j];
                 QD_b[i] = Q_bb[i*n+i];
             }
+            //TODO Parallel with all processes?
             #pragma omp parallel for
             for(int i=0; i<n; ++i)
             {
                 c[i] = G[work_set[i]];
                 for(int j=0; j<n; ++j)
                 {
-                    if(alpha[work_set[j]] > TOL_ZERO)
-                        c[i] -= Q_bb[i*n+j]*alpha[work_set[j]];
+                    const double alpa_work_set_j = alpha[work_set[j]];
+                    if(alpa_work_set_j > TOL_ZERO)
+                        c[i] -= Q_bb[i*n+j]*alpa_work_set_j;
                 }
 
             }
@@ -975,6 +977,8 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
 
         // Update gradient.
         time = MPI_Wtime();
+        //TODO parallel with all processes?
+        #pragma omp parallel for
         for(int i=0; i<n; ++i)
         {
             delta_alpha[i] = alpha_b[i] - alpha[work_set[i]];
@@ -990,12 +994,14 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
             // Only first processor does updating, since
             // it has the whole Q_bb
             #pragma omp parallel for schedule(dynamic)
-            for(int i=0; i<n; ++i)
+            for(int i=0; i<n; ++i) {
+                const int work_set_i = work_set[i];
                 for(int j=0; j<n; ++j) // G_b
                 {
                     if(nz[j])
-                        G[work_set[i]] += Q_bb[n*i+j]*delta_alpha[j];
+                        G[work_set_i] += Q_bb[n*i+j]*delta_alpha[j];
                 }
+            }
         }
         //      info("done.\n"); info_flush();
 
@@ -1016,20 +1022,24 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
         {
             //Even if Q_i 'is_cached' does not mean the not_work_subset is cached. it might be the case, that only work_set is cached.
             //But due to the fact, that only this part of the calculation actually caches calculations we might be good.
-            const Qfloat *Q_i = Q.get_Q_subset_omp(work_set[idx_cached[i]],
+            const int idx_cached_i = idx_cached[i];
+            const double delta_alpha_idx_cached_i = delta_alpha[idx_cached_i];
+            const Qfloat *Q_i = Q.get_Q_subset_omp(work_set[idx_cached_i],
                                                not_work_set,lmn);
             #pragma omp parallel for
             for(int j=0; j<lmn; ++j)
-                G_n[j] += Q_i[not_work_set[j]] * delta_alpha[idx_cached[i]];
+                G_n[j] += Q_i[not_work_set[j]] * delta_alpha_idx_cached_i;
         }
         // ...now update the non-cached part
         for(int i=0; i<count_not_cached; ++i)
         {
-            const Qfloat *Q_i = Q.get_Q_subset_omp(work_set[idx_not_cached[i]],
+            const int idx_not_cached_i = idx_not_cached[i];
+            const double delta_alpha_idx_not_cached_i = delta_alpha[idx_not_cached_i];
+            const Qfloat *Q_i = Q.get_Q_subset_omp(work_set[idx_not_cached_i],
                                                not_work_set,lmn);
             #pragma omp parallel for
             for(int j=0; j<lmn; ++j)
-                G_n[j] += Q_i[not_work_set[j]] * delta_alpha[idx_not_cached[i]];
+                G_n[j] += Q_i[not_work_set[j]] * delta_alpha_idx_not_cached_i;
         }
         //      info("done.\n"); info_flush();
 
