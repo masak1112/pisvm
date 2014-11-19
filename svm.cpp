@@ -862,7 +862,7 @@ int Solver::select_working_set(int &out_i, int &out_j)
 //       printf("%g ",G[t]);
     }
     if (myGmax > Gmax) {
-        #pragma omp critical
+        #pragma omp critical(findGmax)
         {
             if (myGmax > Gmax) {
                 Gmax = myGmax;
@@ -937,9 +937,9 @@ int Solver::select_working_set(int &out_i, int &out_j)
 
     //Keeping the smalles obj_diff with the biggest index
     if (obj_diff_min <= globalobj_diff_min/* && Gmin_idx > globalGmin_idx*/) { //Don't check for index here because of race conditions
-        #pragma omp critical
+        #pragma omp critical(findObj_diff_min)
         {
-            if ((obj_diff_min < globalobj_diff_min)||(obj_diff_min == globalobj_diff_min && Gmin_idx > globalGmin_idx)) {
+            if ((obj_diff_min < globalobj_diff_min)||(obj_diff_min == globalobj_diff_min && Gmin_idx < globalGmin_idx)) {
                 globalobj_diff_min = obj_diff_min;
                 globalGmin_idx = Gmin_idx;
             }
@@ -1018,9 +1018,9 @@ int Solver::max_violating_pair(int &out_i, int &out_j)
         }
     }
     if (Gmax1 >= globalGmax1) {
-        #pragma omp critical
+        #pragma omp critical(findGmax1)
         {
-            if ((Gmax1 > globalGmax1)||(Gmax1 == globalGmax1 && globalGmax1_idx > Gmax1_idx)) {
+            if ((Gmax1 > globalGmax1)||(Gmax1 == globalGmax1 && globalGmax1_idx < Gmax1_idx)) {
                 globalGmax1 = Gmax1;
                 globalGmax1_idx = Gmax1_idx;
             }
@@ -1028,9 +1028,9 @@ int Solver::max_violating_pair(int &out_i, int &out_j)
     }
 
     if (Gmax2 >= globalGmax2) {
-        #pragma omp critical
+        #pragma omp critical(findGmax2)
         {
-            if ((Gmax2 > globalGmax2)||(Gmax2 == globalGmax2 && globalGmax2_idx > Gmax2_idx)) {
+            if ((Gmax2 > globalGmax2)||(Gmax2 == globalGmax2 && globalGmax2_idx < Gmax2_idx)) {
                 globalGmax2 = Gmax2;
                 globalGmax2_idx = Gmax2_idx;
             }
