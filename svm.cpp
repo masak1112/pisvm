@@ -884,7 +884,7 @@ int Solver::select_working_set(int &out_i, int &out_j)
 
 #pragma omp parallel firstprivate(Gmin_idx,obj_diff_min)
 {
-    #pragma omp for
+    #pragma omp for nowait
     for(int j=0; j<active_size; j++)
     {
         if(y[j]==+1)
@@ -975,7 +975,7 @@ int Solver::max_violating_pair(int &out_i, int &out_j)
     double Gmax2 = -INF;		// max { y_i * grad(f)_i | i in I_low(\alpha) }
     int Gmax2_idx = -1;
 
-    #pragma omp for
+    #pragma omp for nowait
     for(int i=0; i<active_size; i++)
     {
         if(y[i]==+1)	// y = +1
@@ -1301,9 +1301,10 @@ public:
         #pragma omp parallel for schedule(dynamic) if (n > 16)
         for(int j=0; j<n; ++j)
         {
-            if(isnan(data[idxs[j]]))
-                data[idxs[j]] = (Qfloat)(y[i]*y[idxs[j]]*
-                                         (this->*kernel_function)(i,idxs[j]));
+            const int idxs_j = idxs[j];
+            if(isnan(data[idxs_j]))
+                data[idxs_j] = (Qfloat)(y[i]*y[idxs_j]*
+                                          (this->*kernel_function)(i,idxs_j));
         }
         return data;
     }
@@ -1399,8 +1400,9 @@ public:
         #pragma omp parallel for schedule(dynamic) if (n > 16)
         for(int j=0; j<n; ++j)
         {
-            if(isnan(data[idxs[j]]))
-                data[idxs[j]] = (Qfloat)(this->*kernel_function)(i,idxs[j]);
+            const int idxs_j = idxs[j];
+            if(isnan(data[idxs_j]))
+                data[idxs_j] = (Qfloat)(this->*kernel_function)(i,idxs_j);
         }
         return data;
     }
