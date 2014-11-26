@@ -226,10 +226,6 @@ public:
         swap(x[i],x[j]);
         swap(nz_idx[i], nz_idx[j]);
         swap(x_len[i], x_len[j]);
-        if(unrolled == i)
-            unrolled = j;
-        else if(unrolled == j)
-            unrolled = i;
         if(x_square) swap(x_square[i],x_square[j]);
     }
 protected:
@@ -241,10 +237,6 @@ private:
     int **nz_idx;
     int *x_len;
     double *x_square;
-    // dense unrolled sparse vector
-    mutable Xfloat *v;
-    // index of currently unrolled vector
-    mutable int unrolled;
     int max_idx;
 
     // svm_parameter
@@ -253,24 +245,13 @@ private:
     const double gamma;
     const double coef0;
 
-    static double dot(const Xfloat *x, const int *nz_x, const int lx,
+    static inline double dot(const Xfloat *x, const int *nz_x, const int lx,
                       const Xfloat *y, const int *nz_y, const int ly);
-    double dot(const int i, const int j) const
-    {
-        register int k;
-        register double sum;
-        if(i != unrolled)
-        {
-            for(k=0; k<x_len[unrolled]; ++k)
-                v[nz_idx[unrolled][k]] = 0;
-            unrolled = i;
-            for(k=0; k<x_len[i]; ++k)
-                v[nz_idx[i][k]] = x[i][k];
-        }
-        sum = 0;
-        for(k=0; k<x_len[j]; ++k)
-            sum += v[nz_idx[j][k]] * x[j][k];
-        return sum;
+    inline double dot(const int i, const int j) const {
+        return dot(
+            x[i],nz_idx[i],x_len[i],
+            x[j],nz_idx[j],x_len[j]
+            );
     }
     double kernel_linear(int i, int j) const
     {
@@ -316,10 +297,6 @@ Kernel::Kernel(int l, Xfloat **x_, int **nz_idx_,
     clone(nz_idx,nz_idx_,l);
     clone(x_len,x_len_,l);
     max_idx = max_idx_;
-    v = new Xfloat[max_idx];
-    unrolled = 0;
-    for(int k=0; k<x_len[unrolled]; ++k)
-        v[nz_idx[unrolled][k]] = x[unrolled][k];
 
     if(kernel_type == RBF)
     {
@@ -337,7 +314,6 @@ Kernel::~Kernel()
     delete[] x;
     delete[] nz_idx;
     delete[] x_len;
-    delete[] v;
     delete[] x_square;
 }
 
@@ -355,10 +331,12 @@ double Kernel::dot(const Xfloat *x, const int *nz_x, const int lx,
             ++i;
             ++j;
         }
-        else if(nz_x[i] > nz_y[j])
-            ++j;
-        else if(nz_x[i] < nz_y[j])
-            ++i;
+        else {
+            while (nz_x[i] > nz_y[j] && j < ly)
+                ++j;
+            while (nz_x[i] < nz_y[j] && i < lx)
+                ++i;
+        }
     }
     return sum;
 }
