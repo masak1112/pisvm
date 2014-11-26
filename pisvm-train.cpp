@@ -37,6 +37,8 @@ void exit_with_help()
         "-v n: n-fold cross validation mode\n"
         "-o n: max. size of working set\n"
         "-q n: max. number of new variables entering working set\n"
+        "flags:\n"
+        "-D: Assume the feature vectors are dense (default: sparse)\n"
     );
     exit(1);
 }
@@ -52,6 +54,7 @@ struct svm_model *model;
 Xfloat *x_space;
 int *nz_idx_space;
 int cross_validation;
+int dense_features;
 int nr_fold;
 
 int main(int argc, char **argv)
@@ -160,6 +163,7 @@ void parse_command_line(int argc, char **argv, char *input_file_name,
     param.o = 2; // safe defaults
     param.q = 2;
     cross_validation = 0;
+    dense_features = 0;
 
     // parse options
     for(i=1; i<argc; i++)
@@ -180,6 +184,10 @@ void parse_command_line(int argc, char **argv, char *input_file_name,
             break;
         case 't':
             param.kernel_type = atoi(argv[i]);
+            if (param.kernel_type < 0) {
+                fprintf(stderr,"Invalid kernel type\n");
+                exit_with_help();
+            }
             break;
         case 'd':
             param.degree = atoi(argv[i]);
@@ -229,6 +237,10 @@ void parse_command_line(int argc, char **argv, char *input_file_name,
             param.weight_label[param.nr_weight-1] = atoi(&argv[i-1][2]);
             param.weight[param.nr_weight-1] = atof(argv[i]);
             break;
+        case 'D':
+            dense_features = 1;
+            i--;
+            break;
         default:
             fprintf(stderr,"unknown option\n");
             exit_with_help();
@@ -237,6 +249,9 @@ void parse_command_line(int argc, char **argv, char *input_file_name,
 
     // determine filenames
 
+    if (dense_features) {
+        param.kernel_type = -(param.kernel_type + 1);
+    }
     if(i>=argc)
         exit_with_help();
 
