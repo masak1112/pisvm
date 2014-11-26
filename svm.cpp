@@ -247,11 +247,21 @@ private:
 
     static inline double dot(const Xfloat *x, const int *nz_x, const int lx,
                       const Xfloat *y, const int *nz_y, const int ly);
+    static double densedot(const Xfloat *x, const Xfloat *y, const int l);
     inline double dot(const int i, const int j) const {
         return dot(
             x[i],nz_idx[i],x_len[i],
             x[j],nz_idx[j],x_len[j]
             );
+    }
+    double densedot(const int i, const int j) const
+    {
+        register int k;
+        register double sum = 0;
+        for (k = 0; k < x_len[i]; ++k) {
+            sum += x[i][k]*x[j][k];
+        }
+        return sum;
     }
     double kernel_linear(int i, int j) const
     {
@@ -268,6 +278,24 @@ private:
     double kernel_sigmoid(int i, int j) const
     {
         return tanh(gamma*dot(i,j)+coef0);
+    }
+
+
+    double kernel_linear_dense(int i, int j) const
+    {
+        return densedot(i,j);
+    }
+    double kernel_poly_dense(int i, int j) const
+    {
+        return powi(gamma*densedot(i,j)+coef0,degree);
+    }
+    double kernel_rbf_dense(int i, int j) const
+    {
+        return exp(-gamma*(x_square[i]+x_square[j]-2*densedot(i,j)));
+    }
+    double kernel_sigmoid_dense(int i, int j) const
+    {
+        return tanh(gamma*densedot(i,j)+coef0);
     }
 };
 
@@ -291,6 +319,20 @@ Kernel::Kernel(int l, Xfloat **x_, int **nz_idx_,
     case SIGMOID:
         kernel_function = &Kernel::kernel_sigmoid;
         break;
+        //Dense Feature kernels
+    case -(LINEAR+1):
+        kernel_function = &Kernel::kernel_linear_dense;
+        break;
+    case -(POLY+1):
+        kernel_function = &Kernel::kernel_poly_dense;
+        break;
+    case -(RBF+1):
+        kernel_function = &Kernel::kernel_rbf_dense;
+        break;
+    case -(SIGMOID+1):
+        kernel_function = &Kernel::kernel_sigmoid_dense;
+        break;
+
     }
 
     clone(x,x_,l);
@@ -304,6 +346,11 @@ Kernel::Kernel(int l, Xfloat **x_, int **nz_idx_,
         #pragma omp parallel for
         for(int i=0; i<l; i++)
             x_square[i] = dot(i,i);
+    }
+    else if (kernel_type == -(RBF+1)) {
+        x_square = new double[l];
+        for(int i=0; i<l; i++)
+            x_square[i] = densedot(i,i);
     }
     else
         x_square = 0;
@@ -340,6 +387,14 @@ double Kernel::dot(const Xfloat *x, const int *nz_x, const int lx,
     }
     return sum;
 }
+double Kernel::densedot(const Xfloat *x, const Xfloat *y, const int l) {
+    register double sum = 0;
+    register int i;
+    for (i=0; i < l; ++i) {
+        sum += x[i]*y[i];
+    }
+    return sum;
+}
 
 double Kernel::k_function(const Xfloat *x, const int *nz_x, const int lx,
                           Xfloat *y, int *nz_y, int ly,
@@ -349,8 +404,13 @@ double Kernel::k_function(const Xfloat *x, const int *nz_x, const int lx,
     {
     case LINEAR:
         return dot(x, nz_x, lx, y, nz_y, ly);
+    case -(LINEAR+1):
+        return densedot(x, y, lx);
     case POLY:
         return powi(param.gamma*dot(x, nz_x, lx, y, nz_y, ly)
+                    +param.coef0,param.degree);
+    case -(POLY+1):
+        return powi(param.gamma*densedot(x, y, lx)
                     +param.coef0,param.degree);
     case RBF:
     {
@@ -359,8 +419,18 @@ double Kernel::k_function(const Xfloat *x, const int *nz_x, const int lx,
                        dot(y, nz_y, ly, y, nz_y, ly)-
                        2*dot(x, nz_x, lx, y, nz_y, ly)));
     }
+    case -(RBF+1):
+    {
+        return exp(-param.gamma*(
+                       densedot(x, x, lx)+
+                       densedot(y, y, ly)-
+                       2*densedot(x, y, lx)));
+    }
     case SIGMOID:
         return tanh(param.gamma*dot(x, nz_x, lx, y, nz_y, ly)
+                    +param.coef0);
+    case -(SIGMOID+1):
+        return tanh(param.gamma*densedot(x, y, lx)
                     +param.coef0);
     default:
         return 0;	/* Unreachable */
@@ -3279,16 +3349,21 @@ int svm_save_model(const char *model_file_name, const svm_model *model)
 
     const svm_parameter& param = model->param;
 
-    fprintf(fp,"svm_type %s\n", svm_type_table[param.svm_type]);
-    fprintf(fp,"kernel_type %s\n", kernel_type_table[param.kernel_type]);
+    //Don't save dense kernel type to file
+    int kernel_type = param.kernel_type;
+    int is_dense = kernel_type < 0;
+    if (is_dense) kernel_type = -kernel_type - 1;
 
-    if(param.kernel_type == POLY)
+    fprintf(fp,"svm_type %s\n", svm_type_table[param.svm_type]);
+    fprintf(fp,"kernel_type %s\n", kernel_type_table[kernel_type]);
+
+    if(kernel_type == POLY)
         fprintf(fp,"degree %d\n", param.degree);
 
-    if(param.kernel_type == POLY || param.kernel_type == RBF || param.kernel_type == SIGMOID)
+    if(kernel_type == POLY || kernel_type == RBF || kernel_type == SIGMOID)
         fprintf(fp,"gamma %g\n", param.gamma);
 
-    if(param.kernel_type == POLY || param.kernel_type == SIGMOID)
+    if(kernel_type == POLY || kernel_type == SIGMOID)
         fprintf(fp,"coef0 %g\n", param.coef0);
 
     int nr_class = model->nr_class;
@@ -3621,6 +3696,7 @@ const char *svm_check_parameter(const svm_problem *prob,
     // kernel_type
 
     int kernel_type = param->kernel_type;
+    if (kernel_type < 0) kernel_type = -kernel_type-1;
     if(kernel_type != LINEAR &&
             kernel_type != POLY &&
             kernel_type != RBF &&
