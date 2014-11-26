@@ -356,10 +356,12 @@ Kernel::Kernel(int l, Xfloat **x_, int **nz_idx_,
   clone(nz_idx,nz_idx_,l);
   clone(x_len,x_len_,l);
   max_idx = max_idx_;
-  v = new Xfloat[max_idx];
-  unrolled = 0;
-  for(int k=0; k<x_len[unrolled]; ++k)
-    v[nz_idx[unrolled][k]] = x[unrolled][k];
+  if (kernel_type >= 0) {
+      v = new Xfloat[max_idx];
+      unrolled = 0;
+      for(int k=0; k<x_len[unrolled]; ++k)
+        v[nz_idx[unrolled][k]] = x[unrolled][k];
+  }
 
   if(kernel_type == RBF)
     {
@@ -381,7 +383,8 @@ Kernel::~Kernel()
   delete[] x;
   delete[] nz_idx;
   delete[] x_len;
-  delete[] v;
+  if (kernel_type >= 0)
+    delete[] v;
   delete[] x_square;
 }
 
