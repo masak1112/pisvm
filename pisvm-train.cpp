@@ -354,6 +354,15 @@ out2:
     if(param.gamma == 0)
         param.gamma = 1.0/prob.max_idx;
 
+    {
+        float feature_density = 100.0*elements/(prob.l*prob.max_idx);
+        if (feature_density > 50) {
+            printf("The features from the model file have a density of %.2f%%. \n"
+                   "You %s consider using the -D flag to use a dense feature representation.\n",
+                   feature_density, feature_density > 75 ? (feature_density > 90 ? "SHOULD" : "should") : "might");
+        }
+    }
+
     fclose(fp);
 }
 
