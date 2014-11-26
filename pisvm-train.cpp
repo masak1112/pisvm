@@ -37,6 +37,8 @@ void exit_with_help()
         "-v n: n-fold cross validation mode\n"
         "-o n: max. size of working set\n"
         "-q n: max. number of new variables entering working set\n"
+        "flags:\n"
+        "-D: Assume the feature vectors are dense (default: sparse)\n"
     );
     exit(1);
 }
@@ -44,6 +46,7 @@ void exit_with_help()
 void parse_command_line(int argc, char **argv, char *input_file_name,
                         char *model_file_name);
 void read_problem(const char *filename);
+void read_problem_dense(const char *filename);
 void do_cross_validation();
 
 struct svm_parameter param;		// set by parse_command_line
@@ -52,6 +55,7 @@ struct svm_model *model;
 Xfloat *x_space;
 int *nz_idx_space;
 int cross_validation;
+int dense_features;
 int nr_fold;
 
 int main(int argc, char **argv)
@@ -64,7 +68,10 @@ int main(int argc, char **argv)
 
     parse_command_line(argc, argv, input_file_name, model_file_name);
     time = MPI_Wtime();
-    read_problem(input_file_name);
+    if (dense_features)
+        read_problem_dense(input_file_name);
+    else
+        read_problem(input_file_name);
     time = MPI_Wtime() - time;
     error_msg = svm_check_parameter(&prob,&param);
     if(error_msg)
@@ -162,6 +169,7 @@ void parse_command_line(int argc, char **argv, char *input_file_name,
     param.o = 2; // safe defaults
     param.q = 2;
     cross_validation = 0;
+    dense_features = 0;
 
     // parse options
     for(i=1; i<argc; i++)
@@ -182,6 +190,10 @@ void parse_command_line(int argc, char **argv, char *input_file_name,
             break;
         case 't':
             param.kernel_type = atoi(argv[i]);
+            if (param.kernel_type < 0) {
+                fprintf(stderr,"Invalid kernel type\n");
+                exit_with_help();
+            }
             break;
         case 'd':
             param.degree = atoi(argv[i]);
@@ -231,6 +243,10 @@ void parse_command_line(int argc, char **argv, char *input_file_name,
             param.weight_label[param.nr_weight-1] = atoi(&argv[i-1][2]);
             param.weight[param.nr_weight-1] = atof(argv[i]);
             break;
+        case 'D':
+            dense_features = 1;
+            i--;
+            break;
         default:
             fprintf(stderr,"unknown option\n");
             exit_with_help();
@@ -239,6 +255,9 @@ void parse_command_line(int argc, char **argv, char *input_file_name,
 
     // determine filenames
 
+    if (dense_features) {
+        param.kernel_type = -(param.kernel_type + 1);
+    }
     if(i>=argc)
         exit_with_help();
 
@@ -331,6 +350,100 @@ out2:
         if(j>=1 && nz_idx_space[j-1]+1 > prob.max_idx)
         {
             prob.max_idx = nz_idx_space[j-1]+1;
+        }
+    }
+    if(param.gamma == 0)
+        param.gamma = 1.0/prob.max_idx;
+
+    {
+        float feature_density = 100.0*elements/(prob.l*prob.max_idx);
+        if (feature_density > 50) {
+            printf("The features from the model file have a density of %.2f%%. \n"
+                   "You %s consider using the -D flag to use a dense feature representation.\n",
+                   feature_density, feature_density > 75 ? (feature_density > 90 ? "SHOULD" : "should") : "might");
+        }
+    }
+
+    fclose(fp);
+}
+
+void read_problem_dense(const char *filename)
+{
+    int i, j;
+    FILE *fp = fopen(filename,"r");
+
+    if(fp == NULL)
+    {
+        fprintf(stderr,"can't open input file %s\n",filename);
+        exit(1);
+    }
+
+    prob.l = 0;
+    prob.max_idx = 0;
+    while(1)
+    {
+        if (fscanf(fp, "%*f") == EOF) break;
+        while (1) {
+            int c;
+            do {
+                c = getc(fp);
+            } while(isspace(c) && c != '\n');
+            if (c == '\n') {
+                break;
+            } else if (c == EOF) {
+                goto out;
+            } else {
+                ungetc(c,fp);
+                int idx;
+                int ret = fscanf(fp, "%d:%*f", &idx);
+                if (ret == EOF) {
+                    goto out;
+                }
+                if (idx > prob.max_idx) prob.max_idx = idx;
+            }
+        }
+        prob.l ++;
+    }
+out:
+    rewind(fp);
+    prob.y = Malloc(double,prob.l);
+    prob.x = Malloc(Xfloat *, prob.l);
+    prob.nz_idx = Malloc(int *, prob.l);
+    prob.x_len = Malloc(int, prob.l);
+    x_space = Malloc(Xfloat,prob.l*prob.max_idx);
+    nz_idx_space = Malloc(int,prob.max_idx);
+    for (i=0; i < prob.max_idx;i++) {
+        nz_idx_space[i] = i;
+    }
+
+    //prob.max_idx = 0;
+    //j=0;
+    for(i=0; i<prob.l; i++)
+    {
+        double label;
+        prob.x[i] = &x_space[prob.max_idx*i];
+        prob.nz_idx[i] = nz_idx_space;
+        prob.x_len[i] = prob.max_idx;
+        fscanf(fp,"%lf",&label);
+        prob.y[i] = label;
+        j = 0;
+        while(1)
+        {
+            int c, idx;
+            Xfloat value;
+            do {
+                c = getc(fp);
+            } while(isspace(c) && c != '\n');
+            if (c == '\n') break;
+            ungetc(c,fp);
+            //	  fscanf(fp,"%d:%lf",&nz_idx_space[j],&x_space[j]);
+            fscanf(fp,"%d:%f",&idx,&value);
+            idx -= 1; // we need zero based indices
+            for (;j < idx; j++) {
+                prob.x[i][j] = 0;
+            }
+            j = idx +1;
+            prob.x[i][idx] = value;
         }
     }
     if(param.gamma == 0)
