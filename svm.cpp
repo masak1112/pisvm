@@ -2689,8 +2689,15 @@ svm_model *svm_train(const svm_problem *prob, const svm_parameter *param)
 
         for (int i = 0; i < nr_class*(nr_class-1)/2; i++) didWeDo[i] = false;
 
-        if ((nr_class*(nr_class-1)/2)/size >= 4) {
+        splits = (nr_class*(nr_class-1)/64) + 1; //Integer division: floor((n*(n-1)/2)/32) + 1
+        if (splits >= size) {
             splits = size;
+        }/* else if (splits <= 0) { //splits >= 1
+            splits = 1;
+        }*/
+
+
+        if (splits > 1) {
             globalp = splits;
             MPI_Info info;
             MPI_Info_create(&info);
@@ -2702,7 +2709,6 @@ svm_model *svm_train(const svm_problem *prob, const svm_parameter *param)
             MPI_Comm_size(comm, &isize);
             MPI_Comm_rank(comm, &irank);
         } else {
-            splits = 1;
             comm = bigcomm;
             isize = size;
             irank = rank;
