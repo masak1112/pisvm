@@ -2669,7 +2669,6 @@ svm_model *svm_train(const svm_problem *prob, const svm_parameter *param)
         MPI_Win pWindow;
         bool * didWeDo = new bool[nr_class*(nr_class-1)/2];
         int globalp = 0;
-        int myP = 0;
         const int increment = 1;
         int *classifierSize = new int[nr_class*(nr_class-1)/2];
         int *classifierLabels = new int[nr_class*(nr_class-1)/2];
