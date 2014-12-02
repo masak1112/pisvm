@@ -2689,6 +2689,7 @@ svm_model *svm_train(const svm_problem *prob, const svm_parameter *param)
 
         for (int i = 0; i < nr_class*(nr_class-1)/2; i++) didWeDo[i] = false;
 
+        //only split communicator when there are enough processes and classes
         splits = (nr_class*(nr_class-1)/64) + 1; //Integer division: floor((n*(n-1)/2)/32) + 1
         if (splits >= size) {
             splits = size;
@@ -2704,8 +2705,9 @@ svm_model *svm_train(const svm_problem *prob, const svm_parameter *param)
             MPI_Win_create(&globalp, rank == 0 ? 1 : 0, sizeof(int),info, bigcomm, &pWindow);
             MPI_Info_free(&info);
 
-            //only split communicator when there are enough processes and classes
-            MPI_Comm_split(bigcomm, 1 + (rank % splits), rank, &comm);
+            //Split communicator into blocks. I hope that this way processes with a small distance end up in one split.
+            // 1 + (int)(rank/(size/(float)splits)) == 1 + (rank / processesPerSplit)
+            MPI_Comm_split(bigcomm, 1 + (int)(rank/(size/(float)splits)), rank, &comm);
             MPI_Comm_size(comm, &isize);
             MPI_Comm_rank(comm, &irank);
         } else {
