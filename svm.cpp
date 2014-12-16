@@ -2787,7 +2787,7 @@ svm_model *svm_train(const svm_problem *prob, const svm_parameter *param)
             isize = size;
             irank = rank;
         }
-        int classifier = rank % splits;
+        int classifier = (int)(rank/(size/(float)splits));
         int p;
         while (classifier < nr_class*(nr_class-1)/2)
             {
