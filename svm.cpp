@@ -2890,6 +2890,10 @@ svm_model *svm_train(const svm_problem *prob, const svm_parameter *param)
         delete[] didWeDo;
         delete[] classifierLabels;
         delete[] classifierSize;
+        if (splits > 1) {
+            MPI_Win_free(&pWindow);
+            MPI_Comm_free(&comm);
+        }
         // build output
         if (rank == 0) {
             model->nr_class = nr_class;
