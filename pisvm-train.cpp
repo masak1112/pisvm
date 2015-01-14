@@ -115,32 +115,36 @@ void do_cross_validation()
     double *target = Malloc(double,prob.l);
 
     svm_cross_validation(&prob,&param,nr_fold,target);
-    if(param.svm_type == EPSILON_SVR ||
-            param.svm_type == NU_SVR)
-    {
-        for(i=0; i<prob.l; i++)
+    int rank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    if (rank == 0) {
+        if(param.svm_type == EPSILON_SVR ||
+                param.svm_type == NU_SVR)
         {
-            double y = prob.y[i];
-            double v = target[i];
-            total_error += (v-y)*(v-y);
-            sumv += v;
-            sumy += y;
-            sumvv += v*v;
-            sumyy += y*y;
-            sumvy += v*y;
+            for(i=0; i<prob.l; i++)
+            {
+                double y = prob.y[i];
+                double v = target[i];
+                total_error += (v-y)*(v-y);
+                sumv += v;
+                sumy += y;
+                sumvv += v*v;
+                sumyy += y*y;
+                sumvy += v*y;
+            }
+            printf("Cross Validation Mean squared error = %g\n",total_error/prob.l);
+            printf("Cross Validation Squared correlation coefficient = %g\n",
+                   ((prob.l*sumvy-sumv*sumy)*(prob.l*sumvy-sumv*sumy))/
+                   ((prob.l*sumvv-sumv*sumv)*(prob.l*sumyy-sumy*sumy))
+                  );
         }
-        printf("Cross Validation Mean squared error = %g\n",total_error/prob.l);
-        printf("Cross Validation Squared correlation coefficient = %g\n",
-               ((prob.l*sumvy-sumv*sumy)*(prob.l*sumvy-sumv*sumy))/
-               ((prob.l*sumvv-sumv*sumv)*(prob.l*sumyy-sumy*sumy))
-              );
-    }
-    else
-    {
-        for(i=0; i<prob.l; i++)
-            if(target[i] == prob.y[i])
-                ++total_correct;
-        printf("Cross Validation Accuracy = %g%%\n",100.0*total_correct/prob.l);
+        else
+        {
+            for(i=0; i<prob.l; i++)
+                if(target[i] == prob.y[i])
+                    ++total_correct;
+            printf("Cross Validation Accuracy = %g%%\n",100.0*total_correct/prob.l);
+        }
     }
     free(target);
 }
