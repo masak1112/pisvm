@@ -2885,7 +2885,7 @@ svm_model *svm_train(const svm_problem *prob, const svm_parameter *param)
                 }
             //TODO only communicate with rank 0 of subcomms
             printf("%d reducing...\n", rank);
-            MPI_Reduce(rank == 0 ? MPI_IN_PLACE : nonzero, nonzero, l, MPI_INT, MPI_LOR, 0, bigcomm);
+            MPI_Allreduce(MPI_IN_PLACE, nonzero, l, MPI_INT, MPI_LOR, bigcomm);
         }
         delete[] didWeDo;
         delete[] classifierLabels;
@@ -2895,75 +2895,85 @@ svm_model *svm_train(const svm_problem *prob, const svm_parameter *param)
             MPI_Comm_free(&comm);
         }
         // build output
+
+        model->nr_class = nr_class;
+
+        model->label = Malloc(int,nr_class);
+        for(i=0; i<nr_class; i++)
+            model->label[i] = label[i];
+
+        model->rho = Malloc(double,nr_class*(nr_class-1)/2);
         if (rank == 0) {
-            model->nr_class = nr_class;
-
-            model->label = Malloc(int,nr_class);
-            for(i=0; i<nr_class; i++)
-                model->label[i] = label[i];
-
-            model->rho = Malloc(double,nr_class*(nr_class-1)/2);
             for(i=0; i<nr_class*(nr_class-1)/2; i++)
                 model->rho[i] = f[i].rho;
-
-            if(param->probability)
-            {
-                model->probA = Malloc(double,nr_class*(nr_class-1)/2);
-                model->probB = Malloc(double,nr_class*(nr_class-1)/2);
+        }
+        MPI_Bcast(model->rho, nr_class*(nr_class-1)/2, MPI_DOUBLE, 0, bigcomm);
+        if(param->probability)
+        {
+            model->probA = Malloc(double,nr_class*(nr_class-1)/2);
+            model->probB = Malloc(double,nr_class*(nr_class-1)/2);
+            if (rank == 0) {
                 for(i=0; i<nr_class*(nr_class-1)/2; i++)
                 {
                     model->probA[i] = probA[i];
                     model->probB[i] = probB[i];
                 }
             }
-            else
-            {
-                model->probA=NULL;
-                model->probB=NULL;
-            }
+            MPI_Bcast(model->probA, nr_class*(nr_class-1)/2, MPI_DOUBLE, 0, bigcomm);
+            MPI_Bcast(model->probB, nr_class*(nr_class-1)/2, MPI_DOUBLE, 0, bigcomm);
+        }
+        else
+        {
+            model->probA=NULL;
+            model->probB=NULL;
+        }
 
-            int total_sv = 0;
-            int *nz_count = Malloc(int,nr_class);
-            model->nSV = Malloc(int,nr_class);
-            for(i=0; i<nr_class; i++)
-            {
-                int nSV = 0;
-                for(int j=0; j<count[i]; j++)
-                    if(nonzero[start[i]+j])
-                    {
-                        ++nSV;
-                        ++total_sv;
-                    }
-                model->nSV[i] = nSV;
-                nz_count[i] = nSV;
-            }
 
-            info("Total nSV = %d\n",total_sv);
 
-            model->l = total_sv;
-            model->SV = Malloc(Xfloat *, total_sv);
-            model->nz_sv = Malloc(int *, total_sv);
-            model->sv_len = Malloc(int, total_sv);
-            p = 0;
-            for(i=0; i<l; i++)
-                if(nonzero[i])
+        int total_sv = 0;
+        int *nz_count = Malloc(int,nr_class);
+        model->nSV = Malloc(int,nr_class);
+        for(i=0; i<nr_class; i++)
+        {
+            int nSV = 0;
+            for(int j=0; j<count[i]; j++)
+                if(nonzero[start[i]+j])
                 {
-                    model->SV[p] = x[i];
-                    model->nz_sv[p] = nz_idx[i];
-                    model->sv_len[p] = x_len[i];
-                    ++p;
+                    ++nSV;
+                    ++total_sv;
                 }
+            model->nSV[i] = nSV;
+            nz_count[i] = nSV;
+        }
+
+        if (rank == 0) {
+            info("Total nSV = %d\n",total_sv);
+        }
+        model->l = total_sv;
+        model->SV = Malloc(Xfloat *, total_sv);
+        model->nz_sv = Malloc(int *, total_sv);
+        model->sv_len = Malloc(int, total_sv);
+        p = 0;
+        for(i=0; i<l; i++)
+            if(nonzero[i])
+            {
+                model->SV[p] = x[i];
+                model->nz_sv[p] = nz_idx[i];
+                model->sv_len[p] = x_len[i];
+                ++p;
+            }
+
+        model->sv_coef = Malloc(double *,nr_class-1);
+        for(i=0; i<nr_class-1; i++)
+            model->sv_coef[i] = Malloc(double,total_sv);
+
+        if (rank == 0) {
             int *nz_start = Malloc(int,nr_class);
             nz_start[0] = 0;
             for(i=1; i<nr_class; i++)
                 nz_start[i] = nz_start[i-1]+nz_count[i-1];
-
-            model->sv_coef = Malloc(double *,nr_class-1);
-            for(i=0; i<nr_class-1; i++)
-                model->sv_coef[i] = Malloc(double,total_sv);
-
             p = 0;
-            for(i=0; i<nr_class; i++)
+            for(i=0; i<nr_class; i++) {
                 for(int j=i+1; j<nr_class; j++)
                 {
                     // classifier (i,j): coefficients with
@@ -2986,20 +2996,15 @@ svm_model *svm_train(const svm_problem *prob, const svm_parameter *param)
                             model->sv_coef[i][q++] = f[p].alpha[ci+k];
                     ++p;
                 }
+            }
             free(nz_start);
-            free(nz_count);
-        } else {
-            model->nr_class = 0;
-            model->label = NULL;
-            model->rho = NULL;
-            model->probA = NULL;
-            model->probB = NULL;
-            model->nSV = NULL;
-            model->SV = NULL;
-            model->nz_sv = NULL;
-            model->sv_len = NULL;
-            model->sv_coef = NULL;
         }
+
+        for (i = 0; i <nr_class -1; i++) {
+            MPI_Bcast(model->sv_coef[i], total_sv, MPI_DOUBLE, 0, bigcomm);
+        }
+
+        free(nz_count);
         free(label);
         free(probA);
         free(probB);
@@ -3017,6 +3022,8 @@ svm_model *svm_train(const svm_problem *prob, const svm_parameter *param)
     }
     return model;
 }
+
+
 
 // Stratified cross validation
 void svm_cross_validation(const svm_problem *prob, const svm_parameter *param,
