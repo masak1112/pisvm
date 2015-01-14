@@ -3098,6 +3098,13 @@ void svm_cross_validation(const svm_problem *prob, const svm_parameter *param,
             fold_start[i]=i*l/nr_fold;
     }
 
+    int rank, size;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+    int *displ = (int *) malloc(sizeof(int)*size);
+    int *cnt = (int *)malloc(sizeof(int) * size);
+
     for(i=0; i<nr_fold; i++)
     {
         int begin = fold_start[i];
@@ -3129,29 +3136,56 @@ void svm_cross_validation(const svm_problem *prob, const svm_parameter *param,
             ++k;
         }
         struct svm_model *submodel = svm_train(&subprob,param);
+
+        {
+            int n = end - begin;
+            displ[0] = 0;
+            cnt[0] = n/size + (0 < n % size ? 1 : 0);
+            for (j = 1; j < size; j++) {
+                displ[j] = displ[j - 1] + cnt[j - 1];
+                cnt[j] = n/size + (j < n % size ? 1 : 0);
+            }
+        }
+
+        double *mytarget = (double *) malloc(sizeof(double)*cnt[rank]);
         if(param->probability &&
                 (param->svm_type == C_SVC || param->svm_type == NU_SVC))
         {
             double *prob_estimates=Malloc(double,svm_get_nr_class(submodel));
-            for(j=begin; j<end; j++)
-                target[perm[j]] =
-                    svm_predict_probability(submodel,prob->x[perm[j]],
-                                            prob->nz_idx[perm[j]],
-                                            prob->x_len[perm[j]],
+            for(j=0; j<cnt[rank]; j++)
+                mytarget[j] =
+                    svm_predict_probability(submodel,prob->x[perm[j + begin + displ[rank]]],
+                                            prob->nz_idx[perm[j + begin + displ[rank]]],
+                                            prob->x_len[perm[j + begin + displ[rank]]],
                                             prob_estimates);
             free(prob_estimates);
         }
-        else
-            for(j=begin; j<end; j++)
-                target[perm[j]] = svm_predict(submodel,prob->x[perm[j]],
-                                              prob->nz_idx[perm[j]],
-                                              prob->x_len[perm[j]]);
+        else {
+            for(j=0; j<cnt[rank]; j++) {
+                mytarget[j] = svm_predict(submodel,prob->x[perm[j + begin + displ[rank]]],
+                                              prob->nz_idx[perm[j + begin + displ[rank]]],
+                                              prob->x_len[perm[j + begin + displ[rank]]]);
+            }
+        }
+        double *alltarget;
+        if (rank == 0) alltarget = (double *) malloc(sizeof(double) * (end-begin));
+        MPI_Gatherv(mytarget, cnt[rank], MPI_DOUBLE, alltarget, cnt, displ, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+
+        if (rank == 0) {
+            for(j = 0; j < (end - begin); j++) {
+                target[perm[begin + j]] = alltarget[j];
+            }
+            free(alltarget);
+        }
+        free(mytarget);
         svm_destroy_model(submodel);
         free(subprob.x);
         free(subprob.nz_idx);
         free(subprob.x_len);
         free(subprob.y);
     }
+    free(displ);
+    free(cnt);
     free(fold_start);
     free(perm);
 }
