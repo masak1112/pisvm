@@ -2856,33 +2856,31 @@ svm_model *svm_train(const svm_problem *prob, const svm_parameter *param)
                 if(!didWeDo[i])
                     f[i].alpha = NULL;
             int p = 0;
-            for(i=0; i<nr_class; i++)
-                for(int j=i+1; j<nr_class; j++) {
-                    if ((!didWeDo[p] && rank != 0) || irank != 0) {
-                        p++;
+            if (rank == 0) {
+                for (i = 0; i < nr_class*(nr_class - 1)/2; i++) {
+                    if (didWeDo[i]) continue;
+                    MPI_Status status;
+                    double rho;
+                    MPI_Recv(&rho, 1, MPI_DOUBLE, MPI_ANY_SOURCE, MPI_ANY_TAG, bigcomm, &status);
+                    p = status.MPI_TAG;
+                    printf("0 receiving %d\n",p);
+                    f[p].rho = rho;
+                    f[p].alpha = Malloc(double,classifierSize[p]);
+                    MPI_Recv(f[p].alpha, classifierSize[p], MPI_DOUBLE, status.MPI_SOURCE, p, bigcomm, &status);
+                }
+            } else if (irank == 0) {
+                for(p=0; p<nr_class*(nr_class - 1)/2; p++) {
+                    if (!didWeDo[p]) {
                         continue;
-                    } else if (rank == 0 && didWeDo[p]) {
-                        p++;
-                        continue;
-                    }
-                    int ci = count[i], cj = count[j];
-                    if (irank == 0 && didWeDo[p]) {
+                    } else {
                         //Master Process of split 'split'
                         //Send
                         printf("%d sending %d to 0\n",rank,p);
                         MPI_Send(&(f[p].rho), 1, MPI_DOUBLE, 0, p, bigcomm);
-                        MPI_Send(f[p].alpha, ci+cj, MPI_DOUBLE, 0, p, bigcomm);
-                    } else if (rank == 0) {
-                        //Global master
-                        //Recv
-                        printf("0 waiting for %d\n",p);
-                        MPI_Status status;
-                        MPI_Recv(&f[p].rho, 1, MPI_DOUBLE, MPI_ANY_SOURCE, p, bigcomm, &status);
-                        f[p].alpha = Malloc(double,ci+cj);
-                        MPI_Recv(f[p].alpha, ci+cj, MPI_DOUBLE, MPI_ANY_SOURCE, p, bigcomm, &status);
+                        MPI_Send(f[p].alpha, classifierSize[p], MPI_DOUBLE, 0, p, bigcomm);
                     }
-                    p+=1;
                 }
+            }
             //TODO only communicate with rank 0 of subcomms
             printf("%d reducing...\n", rank);
             MPI_Allreduce(MPI_IN_PLACE, nonzero, l, MPI_INT, MPI_LOR, bigcomm);
