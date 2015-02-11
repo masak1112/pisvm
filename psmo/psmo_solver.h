@@ -49,6 +49,10 @@ protected:
     virtual int select_working_set(int *work_set, int *not_work_set);
     virtual void init_working_set(int *work_set, int *not_work_set);
     virtual void solve_inner();
+    virtual void solve_inner(int l, const QMatrix& Q, const double *b_,
+                                const schar *y_, double *alpha_, double Cp,
+                                double Cn, double eps, SolutionInfo* si,
+                                int shrinking);
     unsigned int next_rand_pos();
 private:
     void sync_gradient(int *work_set, int *not_work_set);
@@ -79,6 +83,10 @@ public:
     Solver_Parallel_SMO_NU(int n, int q, MPI_Comm comm);
 protected:
     void solve_inner();
+    void solve_inner(int l, const QMatrix& Q, const double *b_,
+                            const schar *y_, double *alpha_, double Cp,
+                            double Cn, double eps, SolutionInfo* si,
+                            int shrinking);
     int select_working_set(int *work_set, int *not_work_set);
     double calculate_rho();
 };
