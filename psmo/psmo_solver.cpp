@@ -1085,14 +1085,13 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
             si->obj = v/2;
         }
 
-        // Put back the solution
-        {
-            for(int i=0; i<l; i++)
-                alpha_[i] = alpha[i];
-        }
-
         si->upper_bound_p = Cp;
         si->upper_bound_n = Cn;
+    }
+    // Put back the solution
+    {
+        for(int i=0; i<l; i++)
+            alpha_[i] = alpha[i];
     }
     total_time = MPI_Wtime() - total_time;
     // print timing statistics
