@@ -44,6 +44,8 @@ template <class S, class T> inline void clone(T*& dst, S* src, int n)
     memcpy((void *)dst,(void *)src,sizeof(T)*n);
 }
 
+
+//XXX Fixed Stacksize in quick_sort?! might cause major problems...
 template <class T>
 void quick_sort(T a[], int idxs[], int l_, int r_)
 {
