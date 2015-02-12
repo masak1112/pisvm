@@ -2745,18 +2745,19 @@ svm_model *svm_train(const svm_problem *prob, const svm_parameter *param)
         const int increment = 1;
         int *classifierSize = new int[nr_class*(nr_class-1)/2];
         int *classifierLabels = new int[nr_class*(nr_class-1)/2];
-
+        int * classifierIndex = new int[nr_class*(nr_class-1)/2];
         {
             int p = 0;
             for (int i = 0; i < nr_class; i++) {
                 for(int j=i+1; j<nr_class; j++) {
                     classifierSize[p] = count[i] + count[j];
                     classifierLabels[p] = i*nr_class + j;
+                    classifierIndex[p] = p;
                     p+=1;
                 }
             }
             //Sort binary multiclass classifiers by number of samples
-            quick_sort(classifierSize, classifierLabels, 0, nr_class*(nr_class-1)/2 - 1);
+            quick_sort(classifierSize, classifierIndex, 0, nr_class*(nr_class-1)/2 - 1);
         }
 
         for (int i = 0; i < nr_class*(nr_class-1)/2; i++) didWeDo[i] = false;
@@ -2791,12 +2792,9 @@ svm_model *svm_train(const svm_problem *prob, const svm_parameter *param)
         int p;
         while (classifier < nr_class*(nr_class-1)/2)
             {
-                int i = classifierLabels[nr_class*(nr_class-1)/2 - classifier - 1]/nr_class;
-                int j = classifierLabels[nr_class*(nr_class-1)/2 - classifier - 1]%nr_class;
-                p = j-i - 1;
-                for (int a = 0; a < i; a++) {
-                    p+=nr_class-a - 1;
-                }
+                int i = classifierLabels[classifierIndex[classifier]]/nr_class;
+                int j = classifierLabels[classifierIndex[classifier]]%nr_class;
+                p = classifierIndex[classifier];
                 svm_problem sub_prob;
                 int si = start[i], sj = start[j];
                 int ci = count[i], cj = count[j];
