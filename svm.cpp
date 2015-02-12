@@ -2798,7 +2798,7 @@ svm_model *svm_train(const svm_problem *prob, const svm_parameter *param)
                 svm_problem sub_prob;
                 int si = start[i], sj = start[j];
                 int ci = count[i], cj = count[j];
-                //if (irank == 0) printf("%d classifier %d: %d-%d with %d samples\n",p, classifier, i,j,ci+cj);
+                if (irank == 0) printf("%d classifier %d: %d-%d with %d and %d samples\n",p, classifier, i,j,ci+cj, classifierSize[p]);
                 if (splits > 1) didWeDo[p] = true;
                 sub_prob.l = ci+cj;
                 sub_prob.max_idx = prob->max_idx;
