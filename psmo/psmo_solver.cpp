@@ -111,6 +111,15 @@ double Solver_Parallel_SMO_NU::calculate_rho()
     return (r1-r2)/2;
 }
 
+void Solver_Parallel_SMO_NU::solve_inner(int l, const QMatrix& Q, const double *b_,
+                                const schar *y_, double *alpha_, double Cp,
+                                double Cn, double eps, SolutionInfo* si,
+                                int shrinking) {
+    Solver_NU sl;
+    sl.Solve(l, Q, b_, y_, alpha_, Cp, Cn, eps,
+             si, shrinking);
+}
+
 void Solver_Parallel_SMO_NU::solve_inner()
 {
     Solver_NU sl;
@@ -382,6 +391,15 @@ int Solver_Parallel_SMO_NU::select_working_set(int *work_set,
     delete[] pidx;
     printf("done.\n");
     return 0;
+}
+
+void Solver_Parallel_SMO::solve_inner(int l, const QMatrix& Q, const double *b_,
+                                const schar *y_, double *alpha_, double Cp,
+                                double Cn, double eps, SolutionInfo* si,
+                                int shrinking) {
+    Solver sl;
+    sl.Solve(l, Q, b_, y_, alpha_, Cp, Cn, eps,
+             si, shrinking);
 }
 
 void Solver_Parallel_SMO::solve_inner()
@@ -656,6 +674,14 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
     double gradient_updating_time = 0;
     double working_set_time = 0;
     double time = 0;
+
+    if (l < size) {
+        if (rank == 0) {
+            solve_inner(l,Q,b_,y_,alpha_,Cp,Cn,eps,si,shrinking);
+        }
+        return;
+    }
+
 
     // Initialization
     this->l = l;
