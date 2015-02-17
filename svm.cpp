@@ -866,7 +866,9 @@ void Solver::Solve(int l, const QMatrix& Q, const double *b_, const schar *y_,
     si->upper_bound_n = Cn;
 
     //  info("\noptimization finished, #iter = %d\n",iter);
+    #ifndef NDEBUG
     info("  %8d |", iter);
+    #endif
 
     delete[] b;
     delete[] y;

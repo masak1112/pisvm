@@ -453,7 +453,9 @@ int Solver_Parallel_SMO::select_working_set(int *work_set, int *not_work_set)
     }
     // check for optimality
     //  printf("Gmax1 + Gmax2 = %g < %g\n", Gmax1+Gmax2,eps);
+    #ifndef NDEBUG
     info(" %g\n", Gmax1+Gmax2);
+    #endif
     if(Gmax1 + Gmax2 < eps) {
         delete[] old_work_set;
         return 1;
@@ -753,8 +755,10 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
 
     // Setup gradient
     {
+        #ifndef NDEBUG
         info("Initializing gradient...");
         info_flush();
+        #endif
         if (rank == 0)
             G = new double[l];
         else
@@ -801,7 +805,9 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
             }
         }
         delete[] G_send;
+        #ifndef NDEBUG
         info("done.\n");
+        #endif
         info_flush();
         ierr = MPI_Barrier(comm);
         CheckError(ierr);
@@ -825,11 +831,13 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
 //   time = clock() - time;
 //   printf("Computation time for 100 kernel rows = %.2lf\n", (double)time/CLOCKS_PER_SEC);
 
+    #ifndef NDEBUG
     if(rank == 0)
     {
         info("  it  | setup time | solver it | solver time | gradient time ");
         info("| kkt violation\n");
     }
+    #endif
 
     iter=0;
     // Optimization loop
@@ -981,14 +989,18 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
         problem_setup_time += time;
         if(rank == 0)
         {
+            #ifndef NDEBUG
             info("%5d | %10.2f |",iter,time);
             info_flush();
+            #endif
             time = MPI_Wtime();
             // Call SMO inner solver
             solve_inner();
             time = MPI_Wtime() - time;
+            #ifndef NDEBUG
             info(" %11.2f |", time);
             info_flush();
+            #endif
             inner_solver_time += time;
             //TODO maybe the other processes could start filling the cache while waiting for the master to finish: calculating something that 'might' be used is better than not doing anything
         }
@@ -1059,8 +1071,10 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
 
         time = MPI_Wtime() - time;
         gradient_updating_time += time;
+        #ifndef NDEBUG
         if(rank == 0)
             info(" %13.2f |", time);
+        #endif
         info_flush();
 
         // Update alpha
@@ -1112,10 +1126,12 @@ void Solver_Parallel_SMO::Solve(int l, const QMatrix& Q, const double *b_,
         info("Working set time = %.2lf (%.2lf%%)\n",
              working_set_time,
              working_set_time/total_time*100);
+
+        info("\noptimization finished, #iter = %d\n",iter);
         info_flush();
     }
     MPI_Barrier(comm);
-    info("\noptimization finished, #iter = %d\n",iter);
+
 
     // Clean up
     delete[] b;
