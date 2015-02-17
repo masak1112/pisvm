@@ -2623,7 +2623,7 @@ void svm_group_classes(const svm_problem *prob, int *nr_class_ret,
 
 typedef struct {int p,i,j,size;} classifier_t;
 int classifier_t_comp(const void * a, const void *b) {
-    return ((classifier_t *)b)->size - ((classifier_t *)a)->size;
+    return (*((classifier_t **)b))->size - (*((classifier_t **)a))->size;
 }
 //
 // Interface functions
@@ -2748,22 +2748,23 @@ svm_model *svm_train(const svm_problem *prob, const svm_parameter *param)
         bool * didWeDo = new bool[nr_class*(nr_class-1)/2];
         int globalp = 0;
         const int increment = 1;
-        classifier_t *classifiers = (classifier_t *)malloc(sizeof(classifier_t) * nr_class*(nr_class-1)/2);
+        classifier_t **classifiers = (classifier_t **)malloc(sizeof(classifier_t *) * nr_class*(nr_class-1)/2);
         int *classifierSize = new int[nr_class*(nr_class-1)/2];
         {
             int p = 0;
             for (int i = 0; i < nr_class; i++) {
                 for(int j=i+1; j<nr_class; j++) {
-                    classifiers[p].size = count[i] + count[j];
-                    classifiers[p].i =i;
-                    classifiers[p].j =j;
-                    classifiers[p].p = p;
-                    classifierSize[p] = classifiers[p].size;
+                    classifiers[p] = new classifier_t();
+                    classifiers[p]->size = count[i] + count[j];
+                    classifiers[p]->i =i;
+                    classifiers[p]->j =j;
+                    classifiers[p]->p = p;
+                    classifierSize[p] = classifiers[p]->size;
                     p+=1;
                 }
             }
             //Sort binary multiclass classifiers by number of samples
-            qsort(classifiers, nr_class*(nr_class-1)/2, sizeof(classifier_t), classifier_t_comp);
+            qsort(classifiers, nr_class*(nr_class-1)/2, sizeof(classifier_t *), classifier_t_comp);
         }
 
         for (int i = 0; i < nr_class*(nr_class-1)/2; i++) didWeDo[i] = false;
@@ -2798,9 +2799,9 @@ svm_model *svm_train(const svm_problem *prob, const svm_parameter *param)
         int p;
         while (classifier < nr_class*(nr_class-1)/2)
             {
-                int i = classifiers[classifier].i;
-                int j = classifiers[classifier].j;
-                p = classifiers[classifier].p;
+                int i = classifiers[classifier]->i;
+                int j = classifiers[classifier]->j;
+                p = classifiers[classifier]->p;
                 svm_problem sub_prob;
                 int si = start[i], sj = start[j];
                 int ci = count[i], cj = count[j];
@@ -2890,6 +2891,9 @@ svm_model *svm_train(const svm_problem *prob, const svm_parameter *param)
             MPI_Allreduce(MPI_IN_PLACE, nonzero, l, MPI_INT, MPI_LOR, bigcomm);
         }
         delete[] didWeDo;
+        for (i = 0; i < nr_class*(nr_class-1)/2; i++) {
+            delete classifiers[i];
+        }
         delete[] classifiers;
         delete[] classifierSize;
         if (splits > 1) {
