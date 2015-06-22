@@ -342,6 +342,10 @@ out:
             ungetc(c,fp);
             //	  fscanf(fp,"%d:%lf",&nz_idx_space[j],&x_space[j]);
             fscanf(fp,"%d:%f",&nz_idx_space[j],&x_space[j]);
+	    if (nz_idx_space[j] == 0) {
+		    fprintf(stderr, "ERROR: Feature indices need to be 1-based!");
+		    exit(1);
+	    }
             --nz_idx_space[j]; // we need zero based indices
             ++prob.x_len[i];
             ++j;
